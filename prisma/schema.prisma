@@ -10,23 +10,57 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Trade {
+model Operation {
   id           Int      @id @default(autoincrement())
-  entryDate    DateTime
+  date         DateTime
   symbol       String
   quantity     Float
-  entryPrice   Float
-  exitPrice    Float?
-  exitDate     DateTime?
+  price        Float
+  amount       Float
   broker       String   @default("AMR")
+  type         String   // BUY, SELL
   isClosed     Boolean  @default(false)
   isFalopa     Boolean  @default(false)
-  shouldFollow Boolean  @default(false)
   isIntra      Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
+  // Relaciones con Trades
+  openTrades  Trade[] @relation("OpenOperation")
+  closeTrades Trade[] @relation("CloseOperation")
+
   @@index([symbol])
-  @@index([entryDate])
+  @@index([date])
+  @@index([broker])
+}
+
+model Trade {
+  id              Int      @id @default(autoincrement())
+  symbol          String
+  quantity        Float
+  openDate        DateTime
+  closeDate       DateTime
+  openPrice       Float
+  closePrice      Float
+  openAmount      Float
+  closeAmount     Float
+  days            Int
+  returnAmount    Float
+  returnPercent   Float
+  tna             Float
+  broker          String
+  instrumentType  String   @default("STOCK") // STOCKS, CEDEARS, BTC
+
+  openOperationId  Int
+  closeOperationId Int
+
+  openOperation  Operation @relation("OpenOperation", fields: [openOperationId], references: [id])
+  closeOperation Operation @relation("CloseOperation", fields: [closeOperationId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([symbol])
+  @@index([closeDate])
   @@index([broker])
 }

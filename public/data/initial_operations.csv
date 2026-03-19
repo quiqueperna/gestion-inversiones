@@ -1,0 +1,7 @@
+date,symbol,quantity,price,broker,type,isFalopa,isIntra
+2026-01-10,AAPL,10,150,AMR,BUY,false,false
+2026-01-15,AAPL,-10,165,AMR,SELL,false,false
+2026-02-01,NVDA,5,800,AMR,BUY,false,false
+2026-02-10,NVDA,-5,950,AMR,SELL,false,false
+2026-03-01,TSLA,20,170,AMR,BUY,true,false
+2026-03-05,TSLA,-20,160,AMR,SELL,false,false

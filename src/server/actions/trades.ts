@@ -1,63 +1,38 @@
 "use server";
 
-import { db } from "@/server/db";
-import { TradeInput, tradeSchema } from "@/lib/validations";
-import { revalidatePath } from "next/cache";
+import { OperationInput } from "@/lib/validations";
+import { getMemoryState } from "@/lib/data-loader";
 
-export interface TradeDB {
-  id: number;
-  entryDate: Date;
-  symbol: string;
-  quantity: number;
-  entryPrice: number;
-  exitPrice: number | null;
-  exitDate: Date | null;
-  broker: string;
-  isClosed: boolean;
-  isFalopa: boolean;
-  shouldFollow: boolean;
-  isIntra: boolean;
-  createdAt: Date;
-  updatedAt: Date;
+// Emulating DB actions with Memory State for Demo Mode as per core.md
+// This avoids Prisma Client generation issues in this environment.
+
+export async function getOperations() {
+  return getMemoryState().operations;
 }
 
-export async function getTrades(): Promise<TradeDB[]> {
-  const data = await db.trade.findMany({
-    orderBy: { entryDate: "desc" },
-  });
-  return data as TradeDB[];
+export async function createOperation(data: OperationInput) {
+  const state = getMemoryState();
+  const amount = data.quantity * data.price;
+  const newOp = {
+      ...data,
+      id: state.operations.length + 1,
+      amount,
+      date: data.date
+  };
+  state.operations.push(newOp);
+  return newOp;
 }
 
-export async function createTrade(data: TradeInput) {
-  const validated = tradeSchema.parse(data);
-  const trade = await db.trade.create({
-    data: {
-      ...validated,
-      entryDate: new Date(validated.entryDate),
-      exitDate: validated.exitDate ? new Date(validated.exitDate) : null,
-    },
-  });
-  revalidatePath("/");
-  return trade;
+export async function getOpenOperations(symbol?: string) {
+    const state = getMemoryState();
+    return state.operations.filter(o => !o.isClosed && (!symbol || o.symbol === symbol));
 }
 
-export async function updateTrade(id: number, data: TradeInput) {
-  const validated = tradeSchema.parse(data);
-  const trade = await db.trade.update({
-    where: { id },
-    data: {
-      ...validated,
-      entryDate: new Date(validated.entryDate),
-      exitDate: validated.exitDate ? new Date(validated.exitDate) : null,
-    },
-  });
-  revalidatePath("/");
-  return trade;
+export async function getTrades() {
+    return getMemoryState().trades;
 }
 
-export async function deleteTrade(id: number) {
-  await db.trade.delete({
-    where: { id },
-  });
-  revalidatePath("/");
+export async function deleteOperation(id: number) {
+    const state = getMemoryState();
+    state.operations = state.operations.filter(o => o.id !== id);
 }

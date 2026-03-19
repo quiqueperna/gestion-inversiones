@@ -2,9 +2,28 @@
 
 ## Operaciones
 
-Una operación (trade) es una entrada (compra/venta) de un instrumento del mercado y el posterior cierre (venta/compra) del instrumento.
+Una operación es una entrada (compra/venta) de un instrumento del mercado.
 
 ### Campos de una operación:
+
+* **ID**: número, entero, incremental comenzando de 1.
+* **Fecha**: Fecha de realización de la operación.
+* **Símbolo**: es el ticket del instrumento (ej: TSLA, NVDA).
+* **Cantidad**: cantidad comprada (número positivo) o vendida (número negativo).
+* **Precio**: precio al que se compró (si es un long) o vendió (si es un short).
+* **Monto**: monto total de la inversión inicial.
+* **Broker**: Texto que indica el broker (por defecto: `AMR`).
+* **Atributos (Booleanos)**:
+    * **Cerrada**: `true/false`
+    * **Falopa**: `true/false`
+    * **Intra**: `true/false`
+
+## Trade
+
+Un Trade es una entrada (compra/venta) de un instrumento del mercado y el posterior cierre (venta/compra) del instrumento con la misma cantidad.
+Cada vez que se entra al mercado se genera un trade, si tenemos una operacion sin contraparte el trade se mantiene abierto, cuando agregamos la contraparte (mismo simbolo, misma cantidad, operacion opuesta) el trade se cierra.
+
+### Campos de un Trade:
 
 * **ID**: número, entero, incremental comenzando de 1.
 * **Fecha de Entrada**: Fecha de realización de la operación.
@@ -21,10 +40,7 @@ Una operación (trade) es una entrada (compra/venta) de un instrumento del merca
 * **TNA**: Tasa Nominal Anual de la inversión.
 * **Broker**: Texto que indica el broker (por defecto: `AMR`).
 * **Atributos (Booleanos)**:
-    * **Cerrada**: `true/false`
-    * **Falopa**: `true/false`
-    * **Seguir**: `true/false`
-    * **Intra**: `true/false`
+    * **Cerrado**: `true/false`
 
 ---
 
