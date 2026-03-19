@@ -15,18 +15,9 @@ Plantilla base para arrancar un proyecto fullstack con foco en velocidad, calida
 
 ## 1) Requisitos
 - Node.js 22 (ver `.nvmrc`)
-- Docker Desktop (para PostgreSQL local)
 
-[IGNORAR ESTA SECCIÓN]
-## 2) Configuración inicial
-```bash
-npm install
-cp .env.example .env
-docker compose up -d
-npx prisma migrate dev --name init
-npm run dev
-```
-[/FIN DE IGNORAR]
+
+
 
 ## 3) Scripts de calidad
 ```bash

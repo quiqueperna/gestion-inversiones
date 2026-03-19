@@ -28,9 +28,18 @@ Una operación (trade) es una entrada (compra/venta) de un instrumento del merca
 
 ---
 
-## Interfaz de Usuario
+## Interfaz de Usuario de Alta de Operación
 
-Se debe poder hacer el **alta de una operación** mediante un formulario con dos métodos de entrada:
+1. Hacer el **alta de una operación** mediante un formulario con dos métodos de entrada:
+2. **Controles tradicionales**: Inputs, combos, datepickers, etc.
+3. **Pegado de texto**: Un área de texto para procesar strings (formato a definir).
+4. ** Tiene que estar todos los campos de la operación.
 
-1. **Controles tradicionales**: Inputs, combos, datepickers, etc.
-2. **Pegado de texto**: Un área de texto para procesar strings (formato a definir).
+## Dashboard
+
+1. Cuadro de rendimientos por cuenta por mes y por año tipo grilla.
+    a. Encabezados de cada cuadro, Saldo, PL en Usd, PL %, I/E (Ingresos/Extracciones)
+    b. Footer con la suma de totales de cada columna.
+2. Se deben ver los cuadros de todas las cuentas.    
+
+
