@@ -16,7 +16,7 @@
 - Si aplica, mostrar prueba manual reproducible (pasos + resultado).
 
 ## 4. Lecciones aprendidas
-- Registrar en `tasks/lessons.md` solo errores repetibles o de alto impacto.
+- Registrar en `bitacora/lessons.md` solo errores repetibles o de alto impacto.
 - Cada lección debe incluir: causa raíz, señal temprana, regla preventiva.
 
 ## 5. Criterio de elegancia

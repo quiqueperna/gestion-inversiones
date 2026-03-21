@@ -6,6 +6,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { tradeSchema, TradeInput } from "@/lib/validations";
 import { X, ClipboardPaste } from "lucide-react";
 import { useState } from "react";
+import { cn } from "@/lib/utils";
 
 interface TradeFormProps {
   onClose: () => void;
@@ -21,12 +22,14 @@ export default function TradeForm({ onClose, onSave, initialData }: TradeFormPro
     register,
     handleSubmit,
     setValue,
+    watch,
     formState: { errors, isSubmitting },
   } = useForm<any>({
     resolver: zodResolver(tradeSchema),
     defaultValues: {
       entryDate: new Date().toISOString().split("T")[0],
       broker: "AMR",
+      type: "BUY",
       isClosed: false,
       isFalopa: false,
       shouldFollow: false,
@@ -112,6 +115,22 @@ export default function TradeForm({ onClose, onSave, initialData }: TradeFormPro
             </div>
           ) : (
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+              {/* Toggle BUY/SELL */}
+              <div className="flex gap-2">
+                {(["BUY", "SELL"] as const).map(t => (
+                  <button key={t} type="button"
+                    onClick={() => setValue("type", t)}
+                    className={cn(
+                      "flex-1 py-2 rounded-[6px] text-[12px] font-black uppercase tracking-widest transition-all",
+                      watch("type") === t
+                        ? t === "BUY" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                        : "border border-white/10 text-zinc-500 hover:text-zinc-300"
+                    )}>
+                    {t === "BUY" ? "▲ Compra" : "▼ Venta"}
+                  </button>
+                ))}
+              </div>
+
               <div className="grid grid-cols-2 gap-6">
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Símbolo</label>
@@ -150,10 +169,15 @@ export default function TradeForm({ onClose, onSave, initialData }: TradeFormPro
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Broker</label>
-                  <input 
+                  <select
                     {...register("broker")}
-                    className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all" 
-                  />
+                    className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all appearance-none"
+                  >
+                    <option value="AMR">AMR</option>
+                    <option value="IOL">IOL</option>
+                    <option value="IBKR">IBKR</option>
+                    <option value="PP">PP</option>
+                  </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Estado</label>

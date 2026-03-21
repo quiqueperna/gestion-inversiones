@@ -14,7 +14,6 @@ Una operación es una entrada (compra/venta) de un instrumento del mercado.
 * **Monto**: monto total de la inversión inicial.
 * **Broker**: Texto que indica el broker (por defecto: `AMR`).
 * **Atributos (Booleanos)**:
-    * **Cerrada**: `true/false`
     * **Falopa**: `true/false`
     * **Intra**: `true/false`
 

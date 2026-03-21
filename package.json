@@ -12,7 +12,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:seed": "ts-node --compiler-options {\"module\":\"CommonJS\"} prisma/seed-complete.ts",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
@@ -39,6 +41,7 @@
     "prisma": "^6.0.0",
     "tailwindcss": "^3.4.14",
     "typescript": "^5.6.3",
+    "ts-node": "^10.9.2",
     "vitest": "^2.1.4"
   }
 }

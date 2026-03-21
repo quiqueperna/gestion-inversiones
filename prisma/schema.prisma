@@ -6,7 +6,7 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "sqlite"
   url      = env("DATABASE_URL")
 }
 
@@ -20,6 +20,7 @@ model Operation {
   broker       String   @default("AMR")
   type         String   // BUY, SELL
   isClosed     Boolean  @default(false)
+  remainingQty Float    @default(0) // Para rastrear cuanto falta cerrar
   isFalopa     Boolean  @default(false)
   isIntra      Boolean  @default(false)
   createdAt    DateTime @default(now())
@@ -30,6 +31,20 @@ model Operation {
   closeTrades Trade[] @relation("CloseOperation")
 
   @@index([symbol])
+  @@index([date])
+  @@index([broker])
+}
+
+model CashFlow {
+  id          Int      @id @default(autoincrement())
+  date        DateTime
+  amount      Float
+  type        String   // DEPOSIT, WITHDRAWAL
+  broker      String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
   @@index([date])
   @@index([broker])
 }
