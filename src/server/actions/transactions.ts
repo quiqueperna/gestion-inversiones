@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { revalidatePath } from "next/cache";
 import path from 'path';
 import fs from 'fs';
-import { getMemoryState, initializeMemoryState, addCashFlow as addCashFlowMem, removeCashFlow as removeCashFlowMem } from "@/lib/data-loader";
+import { getMemoryState, initializeMemoryState, addCashFlow as addCashFlowMem, removeCashFlow as removeCashFlowMem, getCuentas as getCuentasLib, addCuenta as addCuentaLib, removeCuenta as removeCuentaLib, updateCuenta as updateCuentaLib, Cuenta, getBrokers as getBrokersLib, addBroker as addBrokerLib, updateBroker as updateBrokerLib, removeBroker as removeBrokerLib, Broker } from "@/lib/data-loader";
 
 export async function getCashFlows(broker?: string) {
   return await db.cashFlow.findMany({
@@ -54,6 +54,7 @@ export async function addMemoryCashFlow(data: {
   amount: number;
   type: 'DEPOSIT' | 'WITHDRAWAL';
   broker: string;
+  cuenta?: string;
   description?: string;
 }) {
   ensureLoaded();
@@ -73,4 +74,44 @@ export async function removeMemoryCashFlow(id: number) {
 export async function getMemoryCashFlows(broker?: string) {
   const state = ensureLoaded();
   return broker ? state.cashFlows.filter(c => c.broker === broker) : state.cashFlows;
+}
+
+export async function getMemoryCuentas(): Promise<Cuenta[]> {
+  ensureLoaded();
+  return getCuentasLib();
+}
+
+export async function addMemoryCuenta(nombre: string, descripcion?: string): Promise<Cuenta> {
+  ensureLoaded();
+  return addCuentaLib(nombre, descripcion);
+}
+
+export async function removeMemoryCuenta(id: number): Promise<boolean> {
+  ensureLoaded();
+  return removeCuentaLib(id);
+}
+
+export async function updateMemoryCuenta(id: number, nombre: string, descripcion?: string): Promise<boolean> {
+  ensureLoaded();
+  return updateCuentaLib(id, nombre, descripcion);
+}
+
+export async function getMemoryBrokers(): Promise<Broker[]> {
+  ensureLoaded();
+  return getBrokersLib();
+}
+
+export async function addMemoryBroker(nombre: string, descripcion?: string): Promise<Broker> {
+  ensureLoaded();
+  return addBrokerLib(nombre, descripcion);
+}
+
+export async function updateMemoryBroker(id: number, nombre: string, descripcion?: string): Promise<boolean> {
+  ensureLoaded();
+  return updateBrokerLib(id, nombre, descripcion);
+}
+
+export async function removeMemoryBroker(id: number): Promise<boolean> {
+  ensureLoaded();
+  return removeBrokerLib(id);
 }

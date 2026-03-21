@@ -10,18 +10,22 @@ interface CashFlowFormProps {
     amount: number;
     type: "DEPOSIT" | "WITHDRAWAL";
     broker: string;
+    cuenta: string;
     description?: string;
   }) => Promise<void>;
+  inline?: boolean;
 }
 
-const BROKERS = ["AMR", "IOL", "IBKR", "PP"];
+const BROKERS = ["Schwab", "Binance", "Cocos", "Balanz", "AMR", "IOL", "IBKR", "PP"];
+const CUENTAS = ["USA", "Argentina", "CRYPTO"];
 
-export default function CashFlowForm({ onClose, onSave }: CashFlowFormProps) {
+export default function CashFlowForm({ onClose, onSave, inline = false }: CashFlowFormProps) {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"DEPOSIT" | "WITHDRAWAL">("DEPOSIT");
   const [broker, setBroker] = useState("AMR");
+  const [cuenta, setCuenta] = useState("USA");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -31,15 +35,14 @@ export default function CashFlowForm({ onClose, onSave }: CashFlowFormProps) {
     if (!amt || amt <= 0) return;
     setLoading(true);
     try {
-      await onSave({ date, amount: amt, type, broker, description: description || undefined });
+      await onSave({ date, amount: amt, type, broker, cuenta, description: description || undefined });
       onClose();
     } finally {
       setLoading(false);
     }
   };
 
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+  const inner = (
       <div className="bg-zinc-900 rounded-lg w-full max-w-md border border-white/10 shadow-2xl overflow-hidden">
         <div className="p-4 border-b border-white/10 flex justify-between items-center">
           <h2 className="text-[12px] font-bold uppercase tracking-widest text-white">
@@ -81,13 +84,22 @@ export default function CashFlowForm({ onClose, onSave }: CashFlowFormProps) {
             </div>
           </div>
 
-          {/* Broker */}
-          <div className="space-y-1">
-            <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Broker</label>
-            <select value={broker} onChange={e => setBroker(e.target.value)}
-              className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-lg text-[13px] outline-none focus:border-blue-500 text-zinc-200 appearance-none">
-              {BROKERS.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
+          {/* Broker y Cuenta */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Broker</label>
+              <select value={broker} onChange={e => setBroker(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-lg text-[13px] outline-none focus:border-blue-500 text-zinc-200 appearance-none">
+                {BROKERS.map(b => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
+              <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Cuenta</label>
+              <select value={cuenta} onChange={e => setCuenta(e.target.value)}
+                className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-lg text-[13px] outline-none focus:border-blue-500 text-zinc-200 appearance-none">
+                {CUENTAS.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
 
           {/* Descripción */}
@@ -111,6 +123,7 @@ export default function CashFlowForm({ onClose, onSave }: CashFlowFormProps) {
           </div>
         </form>
       </div>
-    </div>
   );
+  if (inline) return <div className="flex justify-center py-6">{inner}</div>;
+  return <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">{inner}</div>;
 }

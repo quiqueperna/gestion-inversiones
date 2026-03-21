@@ -1,5 +1,53 @@
 # Bitácora de Acciones
 
+---
+
+## 21 de Marzo, 2026 — Sesión v7: Brokers CRUD, cierre parcial FIFO, Analytics en español, fix filtros
+
+### Contexto
+Sesión retomada desde contexto comprimido. Se implementaron todas las funcionalidades pendientes de la sesión anterior (v6) que no habían sido escritas, más la corrección de un bug de filtros de período.
+
+### Lo hecho
+
+**Pantalla de Brokers (CRUD completo)**
+- Agregada interface `Broker` a `data-loader.ts` + `brokers: Broker[]` al `memoryState`.
+- Pre-cargados 8 brokers: Schwab, Binance, Cocos, Balanz, AMR, IOL, IBKR, PP.
+- Funciones `getBrokers / addBroker / updateBroker / removeBroker` en `data-loader.ts`.
+- Server actions equivalentes en `transactions.ts`.
+- Creado `src/components/brokers/BrokersSection.tsx` (copia exacta de CuentasSection).
+- Añadido "Brokers" al nav y vista `brokers` en `page.tsx`.
+- Estado `brokers` cargado en `fetchData` junto al resto de datos.
+
+**Cierre parcial FIFO (`closeTradeWithQuantity`)**
+- Nueva server action en `trades.ts` que reemplaza a `closeTradeManually` en el flujo de cierre desde TradeForm.
+- Lógica cascade:
+  - `qty == remainingQty del op` → cierre total normal.
+  - `qty < remainingQty` → cierra con esa cantidad, crea nueva operación abierta con el remanente, redirige el open trade record al nuevo op.
+  - `qty > remainingQty` → consume ese op, continúa en FIFO con el siguiente open op del mismo símbolo.
+  - Si queda exceso tras agotar todos los open ops → crea una operación SELL abierta con el excedente.
+- `TradeForm.onClosePosition` actualizado a `(id, quantity, price, date)` — pasa los valores del formulario en el momento del clic.
+- `handleClosePosition` en `page.tsx` usa los parámetros del formulario en vez del precio de mercado.
+
+**Open Positions — campo `cuenta` y `date`**
+- `getOpenPositions()` ahora devuelve `cuenta: op.cuenta || 'USA'` y `date: op.date` por cada posición.
+- Columnas broker/cuenta movidas al extremo derecho de la tabla de posiciones abiertas.
+- `openPage` se resetea a 1 cuando cambia `searchQuery`.
+- Acceso seguro con `?.` en campos del table row.
+
+**Analytics — nombres en español + tooltips**
+- MetricCards renombradas: "Tasa de Victorias", "Tamaño Promedio".
+- Tarjetas grandes: "Tasa de Victorias", "Factor de Beneficio", "Drawdown Máximo".
+- 15 métricas pequeñas en español: Ratio de Sharpe, Ratio de Sortino, Expectativa, Factor de Recuperación, SQN, Criterio de Kelly, Ganancia Promedio, Pérdida Promedio, Ratio G/P, Mayor Ganancia, Mayor Pérdida, Racha Ganadora, Racha Perdedora, Tiempo Promedio, Comisiones.
+- Clic en cualquier métrica → toggle descripción debajo del valor (`activeTooltip` state).
+
+**Fix filtro de período (Trades y Posiciones)**
+- Bug: `if (view !== "open" && !inRange) return false` hacía que el filtro de fecha nunca se aplicara a posiciones abiertas.
+- Corrección: reescrito el bloque de filtro a `const isOpenTrade = view === 'trades' && !item.isClosed; if (!isOpenTrade) { ... if (!isWithinInterval(...)) return false; }`.
+- El filtro ahora aplica a posiciones (por `openDate`), a trades cerrados (por `closeDate`) y a operaciones (por `date`). Solo los trades abiertos en la vista Trades siguen siendo inmunes al filtro de fecha.
+
+### TypeScript
+- `npx tsc --noEmit` → ✅ sin errores
+
 ## 20 de Marzo, 2026 — Sesión v4: Alineación con requirements.md y trades abiertos
 
 ### Contexto

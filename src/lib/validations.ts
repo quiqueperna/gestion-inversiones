@@ -23,6 +23,7 @@ export const newOperationFormSchema = z.object({
   quantity: z.number({ required_error: "La cantidad es requerida" }).positive("Debe ser positivo"),
   entryPrice: z.number({ required_error: "El precio es requerido" }).positive("Debe ser positivo"),
   broker: z.string().min(1, "El broker es requerido").default("AMR"),
+  cuenta: z.string().default('USA'),
   type: z.enum(["BUY", "SELL"]).default("BUY"),
   isClosed: z.boolean().default(false),
   isFalopa: z.boolean().default(false),

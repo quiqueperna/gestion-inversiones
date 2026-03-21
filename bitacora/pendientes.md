@@ -1,5 +1,51 @@
 # Pendientes del Proyecto
 
+---
+
+## 21 de Marzo, 2026 — Estado post sesión v7
+
+### Implementado en sesión v7
+- ✅ **Pantalla de Brokers** — CRUD completo igual que Cuentas (pestaña nav, BrokersSection, server actions, data-loader)
+- ✅ **Cierre parcial FIFO** — `closeTradeWithQuantity` con cascade (qty <, =, > trade qty)
+- ✅ **Analytics en español** — todos los nombres de métricas en castellano + tooltip al hacer clic
+- ✅ **Open Positions: `cuenta` y `date`** — campos devueltos por `getOpenPositions()`
+- ✅ **Open Positions: broker/cuenta al final** — columnas reordenadas
+- ✅ **Fix filtro de período en Trades y Posiciones** — el filtro de fecha ahora aplica a todas las vistas
+
+### Pendientes restantes
+
+| # | Descripción | Prioridad |
+|---|---|---|
+| P1 | **Formulario TradeForm: campo "precio de cierre" explícito** — para cerrar un trade desde la vista Nueva Op, el usuario ingresa el precio en el campo "Precio" del form (que conceptualmente es "precio de entrada"). Sería más claro tener un campo separado o una UX distinta para indicar que es un cierre. | P2 |
+| P2 | **Tests actualizados** — los tests de integración de `closeTradeManually` deben actualizarse o añadirse para `closeTradeWithQuantity` (casos parcial, cascade, exceso). | P2 |
+| P3 | **Sidebar lateral fijo** — reemplazar nav horizontal | P3 |
+| P4 | **Activar Prisma** — cuando BD disponible, ver `docs/ACTIVAR-BD.md` | P3 |
+| P5 | **Brokers en TradeForm y CashFlowForm** — los selects de broker todavía usan lista hardcodeada. Debería leerse de `getMemoryBrokers()` para que sea consistente con la pantalla de gestión. | P2 |
+
+---
+
+## 21 de Marzo, 2026 — Estado post sesión v5 (ciclo cuenta+UI)
+
+### Implementado en sesión v5
+- ✅ R1 **Campo `cuenta` en `Operation` y `Trade`** — interface + CSV parser + fallback por broker
+- ✅ R2 **Dashboard agrupa por cuenta** — `getYieldsData` usa `t.cuenta` en vez de `t.broker`
+- ✅ R3 **Columna Balance en Dashboard** — nueva columna `Bal.` por cuenta en YieldsGrid
+- ✅ R4 **Selector Cuenta en formulario** — desplegable USA / Argentina / CRYPTO en TradeForm
+- ✅ R5 **Brokers actualizados** — Schwab / Binance / Cocos / Balanz como opciones en TradeForm
+- ✅ R6 **Sección Cuentas** — CRUD completo: `getCuentas/addCuenta/removeCuenta` + CuentasSection UI + pestaña nav
+- ✅ R7 **`onEdit` real** — TradeForm con datos pre-cargados llama a `updateOperation`
+- ✅ R8 **`onView` modal solo lectura** — ViewDetailModal con todos los campos formateados
+- ✅ P1 **E2E `trades.spec.ts` ampliado** — filtrar estado, instrumento, exportar CSV
+
+### Pendientes restantes
+
+| # | Descripción | Prioridad |
+|---|---|---|
+| P3 | **Sidebar lateral fijo** — reemplazar nav horizontal | P3 |
+| P4 | **Activar Prisma** — cuando BD disponible, ver `docs/ACTIVAR-BD.md` | P3 |
+
+---
+
 ## 20 de Marzo, 2026 — Estado post sesión v4 (estado actual)
 
 ### Completado en sesión v4
@@ -22,7 +68,6 @@
 |---|---|---|
 | 1 | **onEdit funcional en Operaciones** — actualmente abre un `alert` placeholder. Falta modal de edición real que llame a `updateOperation`. | P2 |
 | 2 | **onView funcional** — el detalle de operación y trade muestra un `alert` básico. Falta modal de lectura con todos los campos formateados. | P3 |
-| 3 | **Yahoo Finance en CI** — `getOpenPositions` y `getTrades` (trades abiertos) hacen requests externos. En GitHub Actions podría fallar. Agregar `DISABLE_REAL_PRICES=true`. | P2 |
 | 4 | **Sidebar lateral fijo** — reemplazar nav horizontal por sidebar cuando escale la navegación. | P3 |
 | 5 | **Activar Prisma para operaciones** — actualmente todo en memoria. Conectar Operations + Trades a DB cuando esté disponible. Ver `docs/ACTIVAR-BD.md`. | P3 |
 | 6 | **E2E trades.spec.ts** — spec incompleto, faltan casos: filtrar por estado, filtrar por instrumento, exportar CSV. | P3 |
@@ -45,7 +90,6 @@
 | 1 | **Sidebar lateral fijo** — reemplazar nav horizontal por sidebar. Necesario cuando escale la navegación. | P3 |
 | 2 | **`e2e/trades.spec.ts` incompleto** — solo tiene 3 tests básicos. Faltan: crear trade, filtrar por instrumento, exportar CSV. | P3 |
 | 3 | **Activar Prisma para operaciones** — actualmente Prisma solo cubre `CashFlow`. Conectar Operations + Trades cuando el usuario tenga DB disponible. Ver `docs/ACTIVAR-BD.md`. | P3 |
-| 4 | **Yahoo Finance en CI** — `getOpenPositions` hace requests externos. En GitHub Actions podría fallar por red. Agregar mock o variable de entorno `DISABLE_REAL_PRICES=true`. | P2 |
 | 5 | **onEdit en DataTable** — la acción "editar" en la tabla de Operaciones abre un modal placeholder. No llama a `updateOperation` todavía. | P2 |
 | 6 | **onView en DataTable** — la acción "ver detalle" no tiene modal de solo lectura implementado. | P3 |
 

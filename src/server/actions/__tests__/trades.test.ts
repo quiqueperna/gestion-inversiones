@@ -2,9 +2,9 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { initializeMemoryState, resetMemoryState } from '@/lib/data-loader';
 
-const CSV_TWO_OPEN = `date,symbol,quantity,price,broker,type,category,instrument,isFalopa
-2024-01-01,AAPL,10,100,AMR,BUY,TRADE,STOCKS,false
-2024-01-10,AAPL,10,105,AMR,BUY,TRADE,STOCKS,false`;
+const CSV_TWO_OPEN = `date,symbol,quantity,price,broker,type,category,instrument,isFalopa,cuenta
+2024-01-01,AAPL,10,100,AMR,BUY,TRADE,STOCKS,false,USA
+2024-01-10,AAPL,10,105,AMR,BUY,TRADE,STOCKS,false,USA`;
 
 describe('closeTradeManually', () => {
   beforeEach(() => {

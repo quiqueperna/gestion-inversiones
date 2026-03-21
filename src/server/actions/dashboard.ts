@@ -3,7 +3,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import { format, eachMonthOfInterval, isSameMonth } from "date-fns";
+import { eachMonthOfInterval, isSameMonth } from "date-fns";
 import { getMemoryState, initializeMemoryState } from "@/lib/data-loader";
 
 // Helper to ensure data is loaded
@@ -17,52 +17,66 @@ function ensureDataLoaded() {
     return getMemoryState();
 }
 
-export async function getYieldsData(year: number = new Date().getFullYear()) {
-    const state = ensureDataLoaded();
+async function computeYearData(state: ReturnType<typeof getMemoryState>, year: number) {
     const startOfYear = new Date(year, 0, 1);
     const endOfYear = new Date(year, 11, 31, 23, 59, 59);
 
     const trades = state.trades.filter(t => t.isClosed && t.closeDate && t.closeDate >= startOfYear && t.closeDate <= endOfYear);
     const cashFlows = state.cashFlows.filter(c => c.date >= startOfYear && c.date <= endOfYear);
 
-    const brokers = Array.from(new Set([...trades.map(t => t.broker), ...cashFlows.map(c => c.broker)]));
+    const { getCuentas } = await import("@/lib/data-loader");
+    const cuentasFromState = getCuentas().map((c: any) => c.nombre);
+    const cuentasFromData = Array.from(new Set(trades.map(t => t.cuenta || 'USA')));
+    const allCuentas = Array.from(new Set([...cuentasFromState, ...cuentasFromData]));
+
     const months = eachMonthOfInterval({ start: startOfYear, end: endOfYear });
+    const brokerMap: Record<string, string> = { 'IBKR': 'USA', 'Schwab': 'USA', 'IOL': 'Argentina', 'AMR': 'USA', 'Cocos': 'Argentina', 'Balanz': 'Argentina', 'Binance': 'CRYPTO' };
 
     const rows = months.map(monthDate => {
-        const rowData: any = { month: format(monthDate, 'MMM') };
-        let totalPL = 0;
-        let totalIE = 0;
+        const MESES_ES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+        const rowData: any = { month: MESES_ES[monthDate.getMonth()] };
+        let totalBalance = 0, totalPL = 0, totalIE = 0;
 
-        brokers.forEach(broker => {
-            const bTrades = trades.filter(t => t.broker === broker && t.closeDate && isSameMonth(t.closeDate, monthDate));
-            const bFlows = cashFlows.filter(c => c.broker === broker && isSameMonth(c.date, monthDate));
+        allCuentas.forEach(cuenta => {
+            const cTrades = trades.filter(t => (t.cuenta || 'USA') === cuenta && t.closeDate && isSameMonth(t.closeDate, monthDate));
+            const cFlows = cashFlows.filter(c => (brokerMap[c.broker] || 'USA') === cuenta && isSameMonth(c.date, monthDate));
 
-            const pl = bTrades.reduce((sum, t) => sum + t.returnAmount, 0);
-            const ie = bFlows.reduce((sum, c) => sum + (c.type === 'DEPOSIT' ? c.amount : -c.amount), 0);
-            const entrySum = bTrades.reduce((sum, t) => sum + t.openAmount, 0);
+            const balance = cTrades.reduce((sum, t) => sum + t.openAmount, 0);
+            const pl = cTrades.reduce((sum, t) => sum + t.returnAmount, 0);
+            const ie = cFlows.reduce((sum, c) => sum + (c.type === 'DEPOSIT' ? c.amount : -c.amount), 0);
 
-            rowData[broker] = {
-                pl,
-                pct: entrySum > 0 ? (pl / entrySum) * 100 : 0,
-                ie,
-                count: bTrades.length
-            };
-            totalPL += pl;
-            totalIE += ie;
+            rowData[cuenta] = { balance, pl, pct: balance > 0 ? (pl / balance) * 100 : 0, ie, count: cTrades.length };
+            totalBalance += balance; totalPL += pl; totalIE += ie;
         });
 
-        rowData['TOTAL'] = { pl: totalPL, pct: 0, ie: totalIE, count: 0 };
+        rowData['TOTAL'] = { balance: totalBalance, pl: totalPL, pct: totalBalance > 0 ? (totalPL / totalBalance) * 100 : 0, ie: totalIE, count: 0 };
         return rowData;
     });
 
     const totals: any = { month: "TOTAL" };
-    [...brokers, 'TOTAL'].forEach(key => {
+    [...allCuentas, 'TOTAL'].forEach(key => {
+        const colBalance = rows.reduce((sum, r) => sum + (r[key]?.balance || 0), 0);
         const colPL = rows.reduce((sum, r) => sum + (r[key]?.pl || 0), 0);
         const colIE = rows.reduce((sum, r) => sum + (r[key]?.ie || 0), 0);
-        totals[key] = { pl: colPL, ie: colIE };
+        totals[key] = { balance: colBalance, pl: colPL, ie: colIE };
     });
 
-    return { brokers, rows, totals };
+    return { cuentas: allCuentas as string[], rows, totals };
+}
+
+export async function getYieldsData(year?: number | null) {
+    const state = ensureDataLoaded();
+
+    if (!year) {
+        // All years: find distinct years from closed trades, sort descending
+        const closedTrades = state.trades.filter(t => t.isClosed && t.closeDate);
+        const years = [...new Set(closedTrades.map(t => t.closeDate!.getFullYear()))].sort((a, b) => b - a);
+        if (years.length === 0) return { cuentas: [], rows: [], totals: {}, yearGroups: [] };
+        const groups = await Promise.all(years.map(async y => ({ year: y, ...(await computeYearData(state, y)) })));
+        return { cuentas: groups[0].cuentas, rows: [], totals: {}, yearGroups: groups };
+    }
+
+    return computeYearData(state, year);
 }
 
 export async function getStats(startDate: Date, endDate: Date) {
@@ -148,17 +162,38 @@ function createEmptyStats() {
     };
 }
 
-export async function getTopStats() {
-  ensureDataLoaded();
-  const { getTopStats: getTopStatsLib } = await import("@/lib/data-loader");
-  return getTopStatsLib();
+export async function getTopStats(startDate?: Date, endDate?: Date) {
+  const state = ensureDataLoaded();
+  const closedTrades = state.trades.filter(t => {
+    if (!t.isClosed || !t.closeDate) return false;
+    if (startDate && endDate) return t.closeDate >= startDate && t.closeDate <= endDate;
+    return true;
+  });
+  if (closedTrades.length === 0) return null;
+
+  const top5Trades = [...closedTrades].sort((a, b) => b.returnAmount - a.returnAmount).slice(0, 5);
+
+  const monthlyMap = new Map<string, number>();
+  closedTrades.forEach(t => {
+    const key = `${t.closeDate!.getFullYear()}-${String(t.closeDate!.getMonth()+1).padStart(2,'0')}`;
+    monthlyMap.set(key, (monthlyMap.get(key) || 0) + t.returnAmount);
+  });
+  const bestMonthEntry = [...monthlyMap.entries()].sort((a, b) => b[1] - a[1])[0];
+  const bestMonth = bestMonthEntry ? { month: bestMonthEntry[0], total: bestMonthEntry[1] } : null;
+  const bestReturnTrade = [...closedTrades].sort((a, b) => b.returnPercent - a.returnPercent)[0] || null;
+
+  return { top5Trades, bestMonth, bestReturnTrade };
 }
 
-export async function getDashboardSummary() {
+export async function getDashboardSummary(startDate?: Date, endDate?: Date) {
   const state = ensureDataLoaded();
   const allTrades = state.trades;
-  const closedTrades = allTrades.filter(t => t.isClosed);
   const openTrades = allTrades.filter(t => !t.isClosed);
+  const closedTrades = allTrades.filter(t => {
+    if (!t.isClosed || !t.closeDate) return false;
+    if (startDate && endDate) return t.closeDate >= startDate && t.closeDate <= endDate;
+    return true;
+  });
   const allOps = state.operations;
   const openOps = allOps.filter(op => !op.isClosed && op.remainingQty > 0);
   const closedOps = allOps.filter(op => op.isClosed);

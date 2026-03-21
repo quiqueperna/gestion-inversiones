@@ -1,4 +1,65 @@
 # Contexto de Sesión - Gestión de Inversiones
+<!-- LEER PRIMERO: el bloque más reciente (v7, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+
+---
+
+## 21 de Marzo, 2026 — Estado actual tras sesión v7 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** in-memory CSV → `src/lib/data-loader.ts` → `memoryState` (operations, trades, cashFlows, cuentas, brokers)
+- **Prisma (SQLite):** configurado pero inactivo. Solo `transactions.ts` tiene funciones Prisma legacy sin usar.
+- **Tests:** Vitest (34 unitarios + integración) — pendiente actualizar tests de cierre manual
+
+### Navegación (View type)
+```typescript
+type View = "dashboard" | "analytics" | "operations" | "trades" | "open" | "cuentas" | "brokers" | "nueva-op" | "ie";
+```
+- `cuentas`, `brokers`, `nueva-op`, `ie` → no muestran FilterBar
+- `nueva-op` e `ie` renderizan el formulario inline (`inline={true}`)
+
+### Qué funciona hoy
+
+| Feature | Estado |
+|---|---|
+| Dashboard: YieldsGrid meses×cuentas, selector año, modo "Todos" agrupa por año | ✅ |
+| Dashboard: Resultado Neto, filtro de período sincronizado con matriz | ✅ |
+| Analytics: 15+ métricas en español + tooltip al hacer clic | ✅ |
+| Analytics: Top 5, Mejor Mes, Mejor Trade filtrados por período | ✅ |
+| Posiciones: filtro de período por openDate, cuenta real, broker/cuenta al final | ✅ |
+| Trades: filtro de período por closeDate, trades abiertos inmunes | ✅ |
+| Operaciones: broker/cuenta al final, filtro por broker | ✅ |
+| Nueva Op (inline): cierre parcial FIFO con cascade y split | ✅ |
+| I/E (inline): Fecha, Monto, Tipo, Broker, Cuenta, Descripción | ✅ |
+| Cuentas: CRUD completo inline | ✅ |
+| Brokers: CRUD completo inline | ✅ |
+| TypeScript sin errores (`npx tsc --noEmit`) | ✅ |
+
+### Archivos clave
+
+| Archivo | Rol |
+|---|---|
+| `src/lib/data-loader.ts` | Motor central: FIFO, memoryState, CRUD cuentas/brokers/cashflows |
+| `src/app/page.tsx` | UI principal — todas las vistas, navegación, handlers |
+| `src/server/actions/trades.ts` | getOpenPositions (cuenta+date), closeTradeWithQuantity, resto CRUD |
+| `src/server/actions/dashboard.ts` | getStats, getYieldsData, getDashboardSummary, getTopStats, getEquityCurve |
+| `src/server/actions/transactions.ts` | CashFlow + Cuentas + Brokers server actions |
+| `src/components/trades/TradeForm.tsx` | Form inline, panel posiciones abiertas, onClosePosition(id,qty,price,date) |
+| `src/components/brokers/BrokersSection.tsx` | CRUD brokers (igual a CuentasSection) |
+
+### Para arrancar una nueva sesión
+```bash
+taskkill /IM node.exe /F   # Windows: matar servidores viejos
+npm run dev                 # dev en :3000
+npx tsc --noEmit            # debe dar 0 errores
+npm run test                # 34 tests
+```
+
+### Pendientes para próxima sesión
+Ver `bitacora/pendientes.md`. Top:
+1. Brokers en selects de TradeForm/CashFlowForm desde `getMemoryBrokers()` — P2
+2. Tests para `closeTradeWithQuantity` — P2
+3. Sidebar lateral — P3
 
 ---
 
@@ -202,7 +263,7 @@ Ver `pendientes.md` para el detalle completo.
 
 ---
 
-# Contexto de Sesión - Gestión de Inversiones
+# Contexto de Sesión - Gestión de Inversiones (19 de Marzo, 2026 — histórico)
 **Fecha:** 19 de Marzo, 2026
 **Estado del Proyecto:** Prototipo Funcional de Alta Fidelidad (Modo Memoria/CSV)
 

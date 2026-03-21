@@ -3,17 +3,17 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { initializeMemoryState, resetMemoryState } from '@/lib/data-loader';
 
 // CSV con 4 pares cerrados + 2 posiciones abiertas — resultados predecibles
-const MINI_CSV = `date,symbol,quantity,price,broker,type,category,instrument,isFalopa
-2024-01-01,AAPL,10,100,AMR,BUY,TRADE,STOCKS,false
-2024-01-15,AAPL,-10,110,AMR,SELL,TRADE,STOCKS,false
-2024-02-01,TSLA,5,200,IOL,BUY,TRADE,STOCKS,false
-2024-02-20,TSLA,-5,180,IOL,SELL,TRADE,STOCKS,false
-2024-03-01,NVDA,2,400,AMR,BUY,TRADE,STOCKS,false
-2024-03-30,NVDA,-2,500,AMR,SELL,TRADE,STOCKS,false
-2024-04-01,MSFT,10,300,IOL,BUY,TRADE,STOCKS,false
-2024-04-25,MSFT,-10,330,IOL,SELL,TRADE,STOCKS,false
-2024-05-01,AAPL,20,150,AMR,BUY,TRADE,STOCKS,false
-2024-05-01,TSLA,8,220,IOL,BUY,TRADE,STOCKS,false`;
+const MINI_CSV = `date,symbol,quantity,price,broker,type,category,instrument,isFalopa,cuenta
+2024-01-01,AAPL,10,100,AMR,BUY,TRADE,STOCKS,false,USA
+2024-01-15,AAPL,-10,110,AMR,SELL,TRADE,STOCKS,false,USA
+2024-02-01,TSLA,5,200,IOL,BUY,TRADE,STOCKS,false,Argentina
+2024-02-20,TSLA,-5,180,IOL,SELL,TRADE,STOCKS,false,Argentina
+2024-03-01,NVDA,2,400,AMR,BUY,TRADE,STOCKS,false,USA
+2024-03-30,NVDA,-2,500,AMR,SELL,TRADE,STOCKS,false,USA
+2024-04-01,MSFT,10,300,IOL,BUY,TRADE,STOCKS,false,Argentina
+2024-04-25,MSFT,-10,330,IOL,SELL,TRADE,STOCKS,false,Argentina
+2024-05-01,AAPL,20,150,AMR,BUY,TRADE,STOCKS,false,USA
+2024-05-01,TSLA,8,220,IOL,BUY,TRADE,STOCKS,false,Argentina`;
 
 describe('getStats', () => {
   beforeEach(() => {

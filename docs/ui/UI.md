@@ -1,5 +1,7 @@
 # Estilo
 
+Toda la información debe ser en español.
+
 * **Estilo:** Dashboard con estética Dark Mode Moderna (Glassmorphism sutil)
 * **Tipografía:** CSS/Tailwind
 * Títulos Secciones Sans Serif 0.75rem (12px) 700 (Bold) 

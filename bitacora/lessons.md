@@ -1,5 +1,38 @@
 # Lecciones Aprendidas - Proyecto Gestión de Inversiones
 
+---
+
+## 21 de Marzo, 2026 — Sesión v7
+
+### Errores encontrados y corregidos
+
+**Error 1 — Filtro de período completamente ignorado en vista Posiciones Abiertas**
+- Causa: la condición `if (view !== "open" && !inRange) return false` era la guard del filtro de fecha. Para `view === "open"`, la condición `view !== "open"` es `false`, por lo que nunca se ejecutaba el `return false`. El filtro de fecha era un no-op total para posiciones.
+- Señal: usuario reportó "no anda el filtro de periodos en posiciones". En código era obvio una vez encontrado, pero pasó desapercibido en sesiones anteriores porque la intención original era "no filtrar posiciones abiertas por fecha" — luego el requerimiento cambió.
+- Corrección: reescribir la lógica usando una variable semántica `isOpenTrade` en vez de anidar lógica negativa con `view !== "open"`. El nuevo código es más legible y explícito.
+- Regla: **evitar condiciones negativas compuestas como `if (A !== X && !B)`. Extraer a variable nombrada: `const skipFilter = A !== X`. Código más legible, bugs más visibles.**
+
+**Error 2 — `getOpenPositions()` no devolvía `cuenta` ni `date`**
+- Causa: al agregar la tabla de posiciones abiertas en la UI, se referenciaba `item.cuenta` e `item.date`, pero `getOpenPositions()` no incluía esos campos en el objeto de retorno.
+- Consecuencia visible: columna Cuenta mostraba siempre "USA" (fallback en JSX), columna Fecha podía dar error o mostrar fecha inválida.
+- Corrección: añadir `cuenta: op.cuenta || 'USA'` y `date: op.date` al objeto retornado por `getOpenPositions()`.
+- Regla: **cuando se agrega una columna nueva a una tabla, verificar que el server action devuelve el campo. La UI puede tener fallbacks silenciosos (`item.cuenta || 'USA'`) que ocultan que el dato real nunca llega.**
+
+**Error 3 — `onClosePosition` usaba precio de mercado en vez del precio del formulario**
+- Causa: `handleClosePosition` en `page.tsx` buscaba el precio en `pos.currentPrice` (precio de mercado del open position). Si el usuario quería cerrar a un precio distinto (precio de venta real), no había forma de hacerlo.
+- Corrección: cambiar la firma de `onClosePosition` a `(id, quantity, price, date)` y leer esos valores del formulario en el momento del clic ("Cerrar"). El formulario es el canal correcto para ingresar datos de la operación de cierre.
+- Regla: **en un formulario de cierre de posición, los datos de cierre (precio, fecha, cantidad) deben venir del formulario, no de datos calculados del servidor. El usuario controla esos valores.**
+
+### Aprendizajes de la sesión
+
+1. **La lógica FIFO de cierre parcial es compleja pero testeable por casos**: los tres escenarios (equal, less, greater) son independientes y verificables. La clave es manejar correctamente el "split" del open operation (crear nuevo op con el remanente y redirigir el open trade record).
+
+2. **Los tooltips de métricas no necesitan estado por métrica, sino un índice global**: usar un único `activeTooltip: number | null` con un índice único por métrica (100+i para evitar colisión con otras tarjetas) es suficiente. Clic en la misma tarjeta hace toggle.
+
+3. **Al añadir un nuevo tipo de entidad (Broker) al memoryState, siempre recordar**: actualizar `resetMemoryState()` con el array vacío del nuevo tipo. Sin esto, los tests de integración contaminan el estado entre runs.
+
+---
+
 ## 20 de Marzo, 2026 — Sesión v4: Alineación requirements + trades abiertos
 
 ### Errores encontrados y corregidos
@@ -35,7 +68,7 @@
 
 2. **Los trades abiertos deben ignorar el filtro de fecha en las listas**: un trade abierto NO tiene fecha de cierre real. Darle `closeDate = today` es una convención para el cálculo de P&L, no para el filtro de visualización. Filtrarlos por fecha esconde posiciones vigentes.
 
-3. **Yahoo Finance se llama desde dos server actions en paralelo** (`getTrades` y `getOpenPositions`): el `priceCache` a nivel de módulo evita el doble fetch para el mismo símbolo en la misma sesión del servidor. En CI sin red, esto puede romper. Pendiente: `DISABLE_REAL_PRICES`.
+3. **Yahoo Finance se llama desde dos server actions en paralelo** (`getTrades` y `getOpenPositions`): el `priceCache` a nivel de módulo evita el doble fetch para el mismo símbolo en la misma sesión del servidor.
 
 ---
 

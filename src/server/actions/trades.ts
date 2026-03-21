@@ -71,10 +71,15 @@ export async function getOpenPositions() {
         const costBasis = op.remainingQty * op.price;
         const unrealizedPL = marketValue - costBasis;
 
+        let instrumentType = 'STOCK';
+        if (op.symbol.includes('BTC') || op.symbol.includes('ETH')) instrumentType = 'CRYPTO';
+        else if (op.symbol.endsWith('D') || op.symbol.length > 4) instrumentType = 'CEDEAR';
+
         return {
             id: op.id,
             symbol: op.symbol,
             quantity: op.remainingQty,
+            date: op.date,
             openDate: op.date,
             openPrice: op.price,
             currentPrice,
@@ -82,6 +87,8 @@ export async function getOpenPositions() {
             unrealizedPL,
             unrealizedPLPercent: costBasis > 0 ? (unrealizedPL / costBasis) * 100 : 0,
             broker: op.broker,
+            cuenta: op.cuenta || 'USA',
+            instrumentType,
             days: Math.ceil((new Date().getTime() - new Date(op.date).getTime()) / (1000 * 60 * 60 * 24)),
         };
     });
@@ -91,12 +98,13 @@ export async function createOperation(data: any) {
     const state = ensureDataLoaded();
     const newOp: any = {
         id: state.operations.length + 1,
-        date: new Date(data.date),
+        date: new Date(data.date + 'T12:00:00'),
         symbol: data.symbol,
         quantity: data.quantity,
         price: data.price,
         amount: Math.abs(data.quantity * data.price),
         broker: data.broker,
+        cuenta: data.cuenta || 'USA',
         type: data.type,
         remainingQty: Math.abs(data.quantity),
         isClosed: false,
@@ -154,7 +162,7 @@ export async function closeTradeManually(data: {
   if (!openOp) throw new Error('Operación de apertura no encontrada');
   if (openOp.remainingQty < data.quantity) throw new Error('Cantidad insuficiente en la operación de apertura');
 
-  const closeDate = new Date(data.closeDate);
+  const closeDate = new Date(data.closeDate + 'T12:00:00');
   const openDate = new Date(openOp.date);
   const days = Math.max(1, Math.ceil((closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24)));
 
@@ -179,6 +187,7 @@ export async function closeTradeManually(data: {
     price: data.closePrice,
     amount: closeAmount,
     broker: data.broker,
+    cuenta: openOp.cuenta || 'USA',
     type: 'SELL' as const,
     remainingQty: 0,
     isClosed: true,
@@ -226,6 +235,7 @@ export async function closeTradeManually(data: {
       returnPercent,
       tna,
       broker: data.broker,
+      cuenta: openOp.cuenta || 'USA',
       instrumentType,
       isClosed: true,
       openOperationId: data.openOperationId,
@@ -234,6 +244,117 @@ export async function closeTradeManually(data: {
   }
 
   return resultTrade;
+}
+
+export async function closeTradeWithQuantity(data: {
+  symbol: string;
+  closeDate: string;
+  closePrice: number;
+  totalQty: number;
+  broker: string;
+  primaryOpenOperationId: number;
+}) {
+  const state = ensureDataLoaded();
+  const closeDate = new Date(data.closeDate + 'T12:00:00');
+  let remainingToClose = data.totalQty;
+
+  // Get all open BUY ops for this symbol, primary first then FIFO
+  const allOpenOps = state.operations
+    .filter(op => op.symbol === data.symbol.toUpperCase() && op.type === 'BUY' && !op.isClosed && op.remainingQty > 0.0001);
+  allOpenOps.sort((a, b) => a.date.getTime() - b.date.getTime());
+  const primaryIdx = allOpenOps.findIndex(op => op.id === data.primaryOpenOperationId);
+  if (primaryIdx > 0) {
+    const [primary] = allOpenOps.splice(primaryIdx, 1);
+    allOpenOps.unshift(primary);
+  }
+
+  for (const openOp of allOpenOps) {
+    if (remainingToClose <= 0.0001) break;
+
+    const qtyToClose = Math.min(remainingToClose, openOp.remainingQty);
+    const qtyRemainder = openOp.remainingQty - qtyToClose;
+
+    const openDate = new Date(openOp.date);
+    const days = Math.max(1, Math.ceil((closeDate.getTime() - openDate.getTime()) / (1000 * 60 * 60 * 24)));
+    const openAmount = openOp.price * qtyToClose;
+    const closeAmount = data.closePrice * qtyToClose;
+    const returnAmount = closeAmount - openAmount;
+    const returnPercent = openAmount > 0 ? (returnAmount / openAmount) * 100 : 0;
+    const tna = (returnPercent / days) * 365;
+
+    let instrumentType = 'STOCK';
+    if (openOp.symbol.includes('BTC') || openOp.symbol.includes('ETH')) instrumentType = 'CRYPTO';
+    else if (openOp.symbol.endsWith('D') || openOp.symbol.length > 4) instrumentType = 'CEDEAR';
+
+    if (qtyRemainder > 0.0001) {
+      // Partial close: create new open op with remainder
+      const newOpId = Math.max(...state.operations.map(o => o.id)) + 1;
+      const newOpenOp = {
+        ...openOp,
+        id: newOpId,
+        remainingQty: qtyRemainder,
+        isClosed: false,
+      };
+      state.operations.push(newOpenOp);
+
+      // Redirect existing open trade to new op
+      const existingOpenTrade = state.trades.find(t => !t.isClosed && t.openOperationId === openOp.id);
+      if (existingOpenTrade) {
+        existingOpenTrade.openOperationId = newOpId;
+        existingOpenTrade.quantity = qtyRemainder;
+        existingOpenTrade.openAmount = openOp.price * qtyRemainder;
+      }
+    }
+
+    // Mark original op as fully closed
+    openOp.remainingQty = 0;
+    openOp.isClosed = true;
+
+    // Update or create closed trade record
+    const existingOpenTrade = state.trades.find(t => !t.isClosed && t.openOperationId === openOp.id);
+    if (existingOpenTrade && qtyRemainder <= 0.0001) {
+      Object.assign(existingOpenTrade, {
+        closeDate, closePrice: data.closePrice,
+        closeAmount, quantity: qtyToClose, openAmount, days,
+        returnAmount, returnPercent, tna, isClosed: true,
+      });
+    } else {
+      const newTradeId = state.trades.length > 0 ? Math.max(...state.trades.map(t => t.id)) + 1 : 1;
+      state.trades.push({
+        id: newTradeId, symbol: openOp.symbol, quantity: qtyToClose,
+        openDate, closeDate, openPrice: openOp.price, closePrice: data.closePrice,
+        openAmount, closeAmount, days, returnAmount, returnPercent, tna,
+        broker: data.broker, cuenta: openOp.cuenta || 'USA',
+        instrumentType, isClosed: true, openOperationId: openOp.id,
+      });
+    }
+
+    // Create closing SELL operation record
+    const closeOpId = Math.max(...state.operations.map(o => o.id)) + 1;
+    state.operations.push({
+      id: closeOpId, date: closeDate, symbol: openOp.symbol,
+      quantity: -qtyToClose, price: data.closePrice,
+      amount: data.closePrice * qtyToClose, broker: data.broker,
+      cuenta: openOp.cuenta || 'USA', type: 'SELL',
+      remainingQty: 0, isClosed: true, isFalopa: false, isIntra: false,
+    });
+
+    remainingToClose -= qtyToClose;
+  }
+
+  // Excess qty not covered by open ops → create an open SELL operation
+  if (remainingToClose > 0.0001) {
+    const newOpId = Math.max(...state.operations.map(o => o.id)) + 1;
+    state.operations.push({
+      id: newOpId, date: closeDate, symbol: data.symbol.toUpperCase(),
+      quantity: -remainingToClose, price: data.closePrice,
+      amount: data.closePrice * remainingToClose, broker: data.broker,
+      cuenta: 'USA', type: 'SELL', remainingQty: remainingToClose,
+      isClosed: false, isFalopa: false, isIntra: false,
+    });
+  }
+
+  return { success: true };
 }
 
 export async function deleteTrade(id: number): Promise<boolean> {
@@ -250,6 +371,7 @@ export async function updateOperation(id: number, data: Partial<{
   quantity: number;
   price: number;
   broker: string;
+  cuenta: string;
   isFalopa: boolean;
   isIntra: boolean;
 }>): Promise<boolean> {
