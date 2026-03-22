@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { revalidatePath } from "next/cache";
 import path from 'path';
 import fs from 'fs';
-import { getMemoryState, initializeMemoryState, addCashFlow as addCashFlowMem, removeCashFlow as removeCashFlowMem, getCuentas as getCuentasLib, addCuenta as addCuentaLib, removeCuenta as removeCuentaLib, updateCuenta as updateCuentaLib, Cuenta, getBrokers as getBrokersLib, addBroker as addBrokerLib, updateBroker as updateBrokerLib, removeBroker as removeBrokerLib, Broker } from "@/lib/data-loader";
+import { getMemoryState, initializeMemoryState, addCashFlow as addCashFlowMem, removeCashFlow as removeCashFlowMem, updateCashFlow as updateCashFlowMem, getCuentas as getCuentasLib, addCuenta as addCuentaLib, removeCuenta as removeCuentaLib, updateCuenta as updateCuentaLib, Cuenta, getBrokers as getBrokersLib, addBroker as addBrokerLib, updateBroker as updateBrokerLib, removeBroker as removeBrokerLib, Broker } from "@/lib/data-loader";
 
 export async function getCashFlows(broker?: string) {
   return await db.cashFlow.findMany({
@@ -59,16 +59,36 @@ export async function addMemoryCashFlow(data: {
 }) {
   ensureLoaded();
   return addCashFlowMem({
-    date: new Date(data.date),
+    date: new Date(data.date + 'T12:00:00'),
     amount: data.amount,
     type: data.type,
     broker: data.broker,
+    cuenta: data.cuenta,
     description: data.description,
   });
 }
 
 export async function removeMemoryCashFlow(id: number) {
   return removeCashFlowMem(id);
+}
+
+export async function updateMemoryCashFlow(id: number, data: {
+  date: string;
+  amount: number;
+  type: 'DEPOSIT' | 'WITHDRAWAL';
+  broker: string;
+  cuenta?: string;
+  description?: string;
+}) {
+  ensureLoaded();
+  return updateCashFlowMem(id, {
+    date: new Date(data.date + 'T12:00:00'),
+    amount: Math.abs(data.amount),
+    type: data.type,
+    broker: data.broker,
+    cuenta: data.cuenta,
+    description: data.description,
+  });
 }
 
 export async function getMemoryCashFlows(broker?: string) {

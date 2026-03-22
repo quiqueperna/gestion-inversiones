@@ -2,6 +2,116 @@
 
 ---
 
+## 21 de Marzo, 2026 — Sesión v9: Vista Depósitos/Retiros, Row-level Editing, renombres
+
+### Contexto
+Sesión continua en el mismo día que v8. Foco en la funcionalidad de movimientos de cash (depósitos y retiros): crear la pantalla completa, hacerla editable inline y unificar la terminología.
+
+### Lo hecho
+
+**Vista Movimientos — arquitectura 3 bloques**
+- Nueva vista `movimientos` reemplaza el flujo anterior donde el formulario I/E era el único punto de entrada
+- **Bloque 1 — MetricCards**: cuatro tarjetas (Depósitos, Retiros, Balance Neto, Nº Movimientos) usando el componente existente `MetricCard`, con colores semánticos e íconos
+- **Bloque 2 — FilterBar**: se eliminó la exclusión de `movimientos`; el FilterBar compartido filtra los cashflows por `activeInterval` + `searchQuery`. Placeholder de búsqueda dinámico según la vista activa. Botón "Nuevo Dep/Ret" inyectado en `extraFilters`
+- **Bloque 3 — DataTable**: mismo componente de alta densidad que Operaciones/Trades. Columnas: Fecha · Tipo · Monto · Broker · Cuenta · Descripción. Acciones: Editar + Eliminar. Sort, paginación, exportar CSV
+
+**`filteredCashFlows` useMemo**
+- Filtra `cashFlows` por `activeInterval` + `searchQuery` (broker/cuenta/descripción)
+- Ordenado descendente por fecha
+
+**Row-level Editing**
+- DataTable extendido con props opcionales: `editingRowId`, `renderEditRow`, `onCancelEdit`
+- Cuando `row.id === editingRowId` y `renderEditRow` existe, la fila se renderiza con los `<td>` devueltos por el render prop
+- La fila editando muestra fondo `bg-blue-950/20` + borde `border-blue-500/20`
+- `renderCashFlowEditRow`: inputs para Fecha, toggle Dep/Ret, input Monto con prefijo de signo, selects Broker/Cuenta (dinámicos desde `brokers`/`cuentas` del estado), input Descripción
+- Botones ✓ (guardar, desactivado si monto inválido) y ✗ (cancelar)
+- Validación: `isNaN(amt) || amt <= 0` → borde rojo, mensaje, guardar desactivado; `Math.abs` al guardar
+
+**Backend**
+- `CashFlow` interface: campo `cuenta?: string` (data-loader.ts)
+- `updateCashFlow(id, data)` en data-loader.ts
+- `updateMemoryCashFlow(id, data)` en transactions.ts — normaliza fecha con `T12:00:00`, aplica `Math.abs` en monto
+- `addMemoryCashFlow` fix: fecha parseada con `T12:00:00` (era raw string sin timezone)
+- `getMemoryCashFlows()` cargado en `Promise.all` de `fetchData`
+
+**Terminología — renombres globales**
+- "Ingreso" → "Depósito", "Egreso" → "Retiro" en: formulario (título + toggle), columna Tipo de DataTable, toggle de edición inline, MetricCards, menú nav, botón extraFilters
+- Menú: "I/E" → "Dep / Ret"
+
+**Navegación**
+- Nav "Dep / Ret" → `setView("movimientos")` (directo, sin navigateTo)
+- Guardar formulario → `setView("movimientos")`
+- Cancelar formulario → `navigateBack()` → vuelve a movimientos (prevView)
+- `navigateBack`: "movimientos" agregado a la lista de vistas-formulario que no se deben retornar a ellas mismas
+
+### TypeScript
+- `npx tsc --noEmit` → ✅ sin errores (tras fix de `v || <span>` → `v ? String(v) : <span>`)
+
+---
+
+## 21 de Marzo, 2026 — Sesión v8: YieldsGrid fixes, CalendarGrid semanas, timezone bug, docs
+
+### Contexto
+Sesión retomada desde contexto comprimido. Se corrigieron bugs de fechas críticos, se mejoró la presentación del dashboard y se documentó todo lo nuevo.
+
+### Lo hecho
+
+**YieldsGrid — columnas de igual ancho + formato numérico**
+- `table-fixed` + `<colgroup>` para distribuir columnas de datos en ancho igual (la columna Mes tiene 72px fijo, el resto se reparte equitativamente).
+- Helper `fmt`: `Math.round(n).toLocaleString('es-AR')` — punto como separador de miles (ej: 1.234.567).
+- Todos los números en `text-[12px]` (antes `%` era `text-[11px]`).
+- Sub-headers renombrados: `PL $` (antes `PL$`) y `PL %` (antes `%`).
+- Celdas sin datos: muestran `0` en `text-zinc-700` en lugar de guión `-`.
+
+**CalendarGrid — semanas numeradas y PL Mensual**
+- Prop `weekOffset?: number` agregado a la interface.
+- Array precomputado `weekNums`: incrementa contador solo cuando la fila tiene al menos un día en el rango (`week.some(d => d.inRange)`). Filas de relleno reciben 0 y se renderizan vacías.
+- Total semanal muestra `Sem. N` con numeración ascendente dentro del mes.
+- Etiqueta del acumulado mensual cambiada a `PL Mensual:` alineada a la derecha (`justify-end`).
+- Números con `toLocaleString('es-AR')`.
+
+**Bug fix — fecha de cierre desplazada -1 día (UTC midnight)**
+- Causa: `new Date("2026-03-21")` parsea como UTC midnight. En UTC-3 eso es 2026-03-20T21:00:00 → se muestra como 20 de marzo.
+- Fix: todas las fechas se parsean con `T12:00:00` (mediodía local) en:
+  - `closeTradeWithQuantity` (`trades.ts`)
+  - `closeTradeManually` (`trades.ts`)
+  - `createOperation` (`trades.ts`)
+  - `updateOperation` (`page.tsx`)
+  - CSV parser en `data-loader.ts`
+
+**Bug fix — "Invalid Date" en F.Entrada de confirmación de cierre**
+- Causa: `String(pos.date)` sobre un objeto `Date` de Next.js produce "Fri Mar 01 2024 12:00:00 GMT-0300", no un ISO string. `.slice(0, 10)` daba "Fri Mar 01" → `new Date(...)` → Invalid Date.
+- Fix en `TradeForm.tsx`: normalizar en el momento de asignar `pendingClose`:
+  ```ts
+  const openDateStr = rawDate instanceof Date
+    ? rawDate.toISOString().slice(0, 10)
+    : String(rawDate).slice(0, 10);
+  ```
+- Display usa `new Date(pendingClose.openDate + 'T12:00:00').toLocaleDateString("es-AR")`.
+
+**Bug fix — CalendarGrid sin datos en celdas**
+- Misma raíz que el bug de fecha: `String(t.openDate).slice(0, 10)` sobre un Date object no daba una clave ISO válida para el `dayMap`.
+- Fix: helper `toDateStr(d: unknown)` en `page.tsx` que maneja ambos casos (Date e ISO string).
+
+**CSV — datos de demo para grilla diaria**
+- Agregados 14 registros de trades intradía en marzo 2026 (7 pares BUY+SELL misma fecha):
+  - 2026-03-03: COIN +$120, PLTR -$30
+  - 2026-03-10: COIN +$150, SNAP +$80
+  - 2026-03-17: COIN -$60, PLTR +$105
+  - 2026-03-21: COIN +$80
+
+**Documentación**
+- `docs/Funcionalidades.md`: sección `## Cambios en esta sesión — v8` al inicio + subsección `### 1b. Grilla de Rendimiento Diario (Modo Calendario)` con toda la documentación de activación, estructura, totales, selector de mes y formato.
+- `bitacora/prompts.md`: bloque `## 21 de Marzo, 2026 — Sesión v8` con los 4 prompts de la sesión.
+
+**Commit y push**
+- `git commit -m "..."` + `git push origin main` — build limpio, 0 errores TypeScript.
+
+### TypeScript
+- `npx tsc --noEmit` → ✅ sin errores
+
+---
+
 ## 21 de Marzo, 2026 — Sesión v7: Brokers CRUD, cierre parcial FIFO, Analytics en español, fix filtros
 
 ### Contexto

@@ -2,6 +2,57 @@
 
 ---
 
+## 21 de Marzo, 2026 — Estado post sesión v9
+
+### Implementado en sesión v9
+- ✅ **Vista Movimientos completa** — 3 bloques: MetricCards + FilterBar + DataTable
+- ✅ **Row-level Editing en Depósitos/Retiros** — todos los campos, validación de monto, selects dinámicos
+- ✅ **Terminología unificada** — Depósitos/Retiros en toda la UI (formulario, tabla, menú, botones, métricas)
+- ✅ **Backend updateCashFlow** — data-loader + server action
+- ✅ **Fix fecha en addMemoryCashFlow** — T12:00:00
+- ✅ **DataTable extendido** — props editingRowId / renderEditRow / onCancelEdit
+- ✅ **filteredCashFlows useMemo** — filtra por período y búsqueda
+- ✅ **Navegación post-guardar** — redirige a movimientos
+
+### Pendientes restantes
+
+| # | Descripción | Prioridad |
+|---|---|---|
+| P1 | **Brokers en CashFlowForm** — los selects del formulario de alta usan lista hardcodeada (`BROKERS` constant). Debería usar `getMemoryBrokers()` igual que la edición inline | P2 |
+| P2 | **Tests para `closeTradeWithQuantity`** — casos parcial (qty<trade), exacto (qty=trade), cascade (qty>trade), exceso sin contraparte | P2 |
+| P3 | **Sidebar lateral fijo** — reemplazar nav horizontal | P3 |
+| P4 | **Activar Prisma** — cuando BD disponible, ver `docs/ACTIVAR-BD.md` | P3 |
+
+---
+
+## 21 de Marzo, 2026 — Estado post sesión v8
+
+### Implementado en sesión v8
+- ✅ **YieldsGrid: columnas igual ancho** — `table-fixed` + `<colgroup>` + col fija 72px para Mes
+- ✅ **YieldsGrid: números con separador de miles** — `toLocaleString('es-AR')`
+- ✅ **YieldsGrid: fuente uniforme** — todos los números `text-[12px]`
+- ✅ **YieldsGrid: renombrar columnas** — `PL $` y `PL %`
+- ✅ **YieldsGrid: celdas vacías muestran `0`** — en lugar de guión `-`
+- ✅ **CalendarGrid: semanas numeradas ascendente** — `Sem. 1`, `Sem. 2`... solo filas con días en rango
+- ✅ **CalendarGrid: etiqueta `PL Mensual:` alineada a la derecha**
+- ✅ **Bug fecha cierre -1 día** — fix `T12:00:00` en closeTradeWithQuantity, closeTradeManually, createOperation, updateOperation, data-loader CSV
+- ✅ **Bug Invalid Date en confirmación de cierre** — fix `instanceof Date` en TradeForm pendingClose
+- ✅ **Bug CalendarGrid sin datos** — helper `toDateStr` en page.tsx
+- ✅ **CSV demo: 14 trades intradía en marzo 2026** — para testear grilla de día
+- ✅ **Funcionalidades.md actualizado** — sección v8 + subsección 1b CalendarGrid
+- ✅ **prompts.md actualizado** — bloque sesión v8
+
+### Pendientes restantes
+
+| # | Descripción | Prioridad |
+|---|---|---|
+| P1 | **Brokers en TradeForm y CashFlowForm** — los selects de broker usan lista hardcodeada. Debería leerse de `getMemoryBrokers()` para consistencia con la pantalla de gestión | P2 |
+| P2 | **Tests para `closeTradeWithQuantity`** — casos parcial (qty<trade), exacto (qty=trade), cascade (qty>trade), exceso sin contraparte | P2 |
+| P3 | **Sidebar lateral fijo** — reemplazar nav horizontal | P3 |
+| P4 | **Activar Prisma** — cuando BD disponible, ver `docs/ACTIVAR-BD.md` | P3 |
+
+---
+
 ## 21 de Marzo, 2026 — Estado post sesión v7
 
 ### Implementado en sesión v7

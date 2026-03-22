@@ -2,6 +2,84 @@
 
 ---
 
+## 21 de Marzo, 2026 — Sesión v9
+
+### Errores encontrados y corregidos
+
+**Error 1 — Primera implementación ignoró el spec de 3 bloques de UI**
+- Causa: se construyó un listado con tabla HTML manual debajo del formulario, sin leer los archivos `UI.md`, `UI-List.md`, `UI-Behavior.md` primero.
+- Señal: el usuario indicó "no estás respetando la funcionalidad y estética de las listas definidas en los 3 archivos de UI".
+- Corrección: releer los 3 archivos de UI, luego reconstruir la vista con la arquitectura correcta: MetricCards + FilterBar compartido + DataTable existente.
+- Regla: **antes de implementar cualquier vista de listado, leer UI.md + UI-List.md + UI-Behavior.md. La estructura siempre es: tarjetas de resumen arriba, FilterBar en medio, DataTable abajo.**
+
+**Error 2 — `v || <span>` no es ReactNode válido en TypeScript strict**
+- Causa: en la definición de `cashFlowColumns`, la columna `cuenta` usaba `render: (v) => v || <span className="text-zinc-600">—</span>`. TypeScript reportó que el tipo de retorno es `{}` (el tipo de `v` cuando truthy), no `ReactNode`.
+- Señal: `error TS2322: Type '{}' is not assignable to type 'ReactNode'`.
+- Corrección: `render: (v) => v ? String(v) : <span className="text-zinc-600">—</span>`.
+- Regla: **en render props de ColumnDef, si el valor puede ser truthy pero no es ReactNode (es `unknown`), hacer cast explícito: `String(v)` o `Number(v)`. No usar `||` directamente con JSX.**
+
+**Error 3 — FilterBar excluido de `movimientos` → faltaban filtros y bloque de búsqueda**
+- Causa: al crear la vista `movimientos` se agregó a la lista de exclusión del FilterBar junto con las vistas de formulario (cuentas, brokers, nueva-op, ie). No corresponde porque movimientos es una vista de listado, no de gestión.
+- Señal: la pantalla no tenía FilterBar y la búsqueda/período no funcionaban para cashflows.
+- Corrección: quitar `movimientos` de la exclusión; agregar `filteredCashFlows` useMemo que filtra por `activeInterval` + `searchQuery`.
+- Regla: **las vistas de listado (DataTable) siempre incluyen el FilterBar. Solo se excluye en vistas de formulario puro (cuentas, brokers, nueva-op, ie).**
+
+### Aprendizajes de la sesión
+
+1. **El patrón `renderEditRow` como render prop en DataTable es extensible sin romper compatibilidad**: al hacer las props opcionales (`editingRowId = null`, `renderEditRow` opcional), todos los usos existentes de DataTable siguen funcionando sin cambios. El componente detecta si hay edición activa solo cuando ambas props están presentes.
+
+2. **El signo de los montos debe resolverse en la capa de presentación, no en el dato**: `amount` en `CashFlow` es siempre positivo. El tipo (`DEPOSIT`/`WITHDRAWAL`) determina si se muestra `+$X` o `-$X`. Esta separación simplifica comparaciones, sumas y validaciones (no hay que manejar negativos en ningún cálculo).
+
+3. **Los selects dinámicos en row-level editing mejoran la consistencia UX**: usar `brokers` y `cuentas` del estado ya cargado (en vez de listas hardcodeadas) garantiza que las opciones del editor reflejen siempre los datos actuales del sistema. El fallback a las listas hardcodeadas aplica solo si el estado está vacío.
+
+4. **Leer la documentación de UI primero ahorra retrabajos**: en esta sesión hubo que rehacer la vista movimientos completamente porque se implementó sin leer el spec. El costo fue de 2 prompts + tiempo. Leer UI.md, UI-List.md y UI-Behavior.md al inicio de cualquier tarea de UI es obligatorio.
+
+---
+
+## 21 de Marzo, 2026 — Sesión v8
+
+### Errores encontrados y corregidos
+
+**Error 1 — `new Date("YYYY-MM-DD")` desplaza la fecha en zonas UTC negativas**
+- Causa: `new Date("2026-03-21")` sin zona horaria se interpreta como UTC midnight `2026-03-21T00:00:00.000Z`. En UTC-3, eso equivale a `2026-03-20T21:00:00` → la fecha mostrada es el día anterior.
+- Señal: usuario ingresó "21/03/2026" como fecha de cierre y se guardó "20/03/2026".
+- Corrección: append de `'T12:00:00'` al parsear cualquier string de fecha: `new Date(dateStr + 'T12:00:00')`. Mediodía local nunca cruza la medianoche en ninguna zona horaria UTC-11 a UTC+11.
+- Aplicado en: `closeTradeWithQuantity`, `closeTradeManually`, `createOperation`, `updateOperation`, `data-loader.ts` CSV parser.
+- Regla: **nunca usar `new Date("YYYY-MM-DD")` directamente. Siempre `new Date(str + 'T12:00:00')` o `parseISO` de date-fns que hace lo mismo.**
+
+**Error 2 — `String(dateObj).slice(0, 10)` no produce un ISO string**
+- Causa: Next.js server actions retornan objetos `Date` reales al cliente. Al hacer `String(dateObj)`, JavaScript llama al método `toString()` del objeto Date, que produce algo como `"Fri Mar 01 2024 12:00:00 GMT-0300 (hora estándar de Argentina)"`. Hacer `.slice(0, 10)` sobre eso produce `"Fri Mar 01"` — no es una fecha ISO válida.
+- Señal: confirmación de cierre mostraba "Invalid Date" en el campo F.Entrada.
+- Corrección: runtime type check: `rawDate instanceof Date ? rawDate.toISOString().slice(0, 10) : String(rawDate).slice(0, 10)`.
+- Regla: **cuando se recibe una fecha de un server action, no asumir que es string. Verificar con `instanceof Date` antes de usar `.slice(0, 10)`. Alternativamente, serializar con `.toISOString()` en el server action antes de enviar.**
+
+**Error 3 — `docs/func-backup-borrar.md` staged accidentalmente**
+- Causa: se creó un archivo temporal durante la sesión y quedó en el staging area.
+- Corrección: `git restore --staged docs/func-backup-borrar.md` antes del commit.
+- Regla: **antes de `git add` masivo, revisar `git status` y listar los archivos. Preferir `git add` por archivos específicos en lugar de `git add .`.**
+
+**Error 4 — `e2e/trades.spec.ts` no incluido en el stage inicial**
+- Causa: el archivo era nuevo (untracked) y no fue capturado por el patrón de add.
+- Corrección: second `git add e2e/trades.spec.ts` antes de commitear.
+- Regla: **siempre revisar `git status` después del stage para confirmar que todos los archivos esperados están incluidos, especialmente los archivos nuevos (untracked).**
+
+**Error 5 — CalendarGrid sin datos aunque existían trades intradía**
+- Causa: el `dayMap` se construía con claves `String(t.openDate).slice(0, 10)`, que aplicaba el mismo bug del Error 2 — Date object no da ISO string. Las claves del mapa eran inválidas y no coincidían con las claves de días.
+- Corrección: helper `toDateStr(d: unknown)` que hace el `instanceof Date` check.
+- Regla: **cuando se usan fechas como claves de un mapa/diccionario, verificar que la representación es exactamente `YYYY-MM-DD`. Un carácter de diferencia hace que no haya match.**
+
+### Aprendizajes de la sesión
+
+1. **El bug UTC midnight es sistémico, no puntual**: cada vez que se parsea un string de fecha del usuario, del CSV o de un formulario usando `new Date("YYYY-MM-DD")`, hay riesgo de desplazamiento. La solución `T12:00:00` debe aplicarse en TODOS los puntos de parseo. Un solo punto olvidado vuelve a manifestar el bug.
+
+2. **Next.js server actions no serializan automáticamente Date objects a strings**: la interface entre server y client retorna `Date` como objeto real, no como ISO string. Los componentes cliente deben manejar ambos casos con `instanceof Date`. Alternativa más robusta: serializar las fechas como strings en el server action antes de retornarlas.
+
+3. **`table-fixed` sin `<colgroup>` no garantiza igualdad de anchos**: `table-fixed` distribuye el espacio sobrante en base a las primeras celdas del thead. Para garantizar que las columnas de datos (Balance, PL $, PL %, I/E) tengan exactamente el mismo ancho, es necesario el `<colgroup>` sin `style` explícito — el browser distribuye el espacio restante equitativamente.
+
+4. **Las filas de relleno del calendario requieren lógica de numeración separada**: al numerar las semanas, no se debe contar las filas que solo tienen días de otro mes. Precomputar el array de números fuera del JSX hace el código más legible y testeable que hacerlo inline en el render.
+
+---
+
 ## 21 de Marzo, 2026 — Sesión v7
 
 ### Errores encontrados y corregidos

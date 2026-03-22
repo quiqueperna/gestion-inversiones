@@ -4,6 +4,47 @@
 
 ---
 
+## Cambios en esta sesión — v9 (21 de Marzo 2026)
+
+### Vista Depósitos y Retiros (nueva pantalla completa)
+- Nueva vista `movimientos` accesible desde el menú **"Dep / Ret"**
+- Arquitectura de 3 bloques según spec UI: MetricCards + FilterBar + DataTable
+- **Bloque 1 — MetricCards**: Depósitos (total $), Retiros (total $), Balance Neto, Nº Movimientos — filtrados por período activo
+- **Bloque 2 — FilterBar**: compartido, con filtro de período + búsqueda por broker / cuenta / descripción; botón **"Nuevo Dep/Ret"** en slot `extraFilters`
+- **Bloque 3 — DataTable**: misma estética y funcionalidad que Operaciones/Trades (alta densidad, sort, paginación, CSV export)
+  - Columnas: Fecha · Tipo (badge verde/rojo) · Monto (+/- en color) · Broker · Cuenta · Descripción · Acciones
+  - Acciones: Editar (✏) · Eliminar (🗑)
+
+### Row-level Editing en Depósitos y Retiros
+- Clic en el ✏ lápiz transforma la fila en inputs editables (fondo azul sutil para indicar modo)
+- Todos los campos editables inline: Fecha, Tipo, Monto, Broker (select dinámico), Cuenta (select dinámico), Descripción
+- Prefijo **+$** (verde) o **−$** (rojo) delante del monto según el tipo seleccionado
+- Botón ✓ guardar (desactivado si monto inválido) · ✗ cancelar
+- Validación: monto siempre positivo; el tipo determina el signo; si es ≤ 0 → borde rojo + mensaje + guardar desactivado
+
+### Terminología actualizada
+- "Ingreso" → **"Depósito"**, "Egreso" → **"Retiro"** en toda la UI (formulario, tabla, badges, metric cards, menú, botones)
+
+### Backend
+- Campo `cuenta?: string` agregado a la interface `CashFlow` en `data-loader.ts`
+- `updateCashFlow(id, data)` agregado a `data-loader.ts`
+- `updateMemoryCashFlow(id, data)` server action en `transactions.ts`
+- Fix fecha: `addMemoryCashFlow` ahora usa `T12:00:00` al parsear la fecha (consistente con el resto del sistema)
+- `getMemoryCashFlows` y `removeMemoryCashFlow` integrados en el `fetchData` del `Promise.all`
+
+### DataTable extendido
+- Nuevas props opcionales: `editingRowId`, `renderEditRow`, `onCancelEdit`
+- Cuando `row.id === editingRowId` y `renderEditRow` está definido, renderiza la fila como `<td>` editables en lugar del display normal
+- Compatible con todos los usos existentes (sin cambios de comportamiento en Operaciones/Trades)
+
+### Navegación
+- Al guardar un depósito/retiro: navega automáticamente a la vista `movimientos`
+- Al cancelar el formulario: vuelve a `movimientos`
+- Menú "I/E" renombrado a **"Dep / Ret"** → navega directo a `movimientos`
+- La vista de formulario (`ie`) se activa desde el botón "Nuevo Dep/Ret" dentro de `movimientos`
+
+---
+
 ## Cambios en esta sesión — v8 (21 de Marzo 2026)
 
 ### Bug fixes críticos
@@ -201,19 +242,34 @@ Ratio de Sharpe, Ratio de Sortino, Expectativa, Factor de Recuperación, SQN, Cr
 - Brokers precargados: Schwab, Binance, Cocos, Balanz, AMR, IOL, IBKR, PP
 - Agregar / editar inline / eliminar
 
-## 9. Ingresos / Egresos (CashFlow)
+## 9. Depósitos y Retiros (CashFlow)
 
-- Vista inline (no modal)
-- Campos: Tipo (Ingreso/Egreso), Fecha, Monto, Broker, Cuenta, Descripción
-- Toggle visual Ingreso / Egreso (verde / rojo)
+### 9a. Formulario de alta
+- Vista inline (no modal), accesible desde botón "Nuevo Dep/Ret" dentro de la vista movimientos
+- Toggle visual **Depósito** (verde) / **Retiro** (rojo)
+- Campos: Tipo, Fecha, Monto, Broker, Cuenta, Descripción (opcional)
+- Al guardar: navega a la pantalla de movimientos
 - Impacta la columna I/E del Dashboard
+
+### 9b. Vista Movimientos (pantalla completa)
+- Arquitectura 3 bloques: MetricCards + FilterBar + DataTable
+- **MetricCards**: Depósitos totales, Retiros totales, Balance Neto, Nº movimientos — filtrados por período
+- **FilterBar**: período + búsqueda por broker / cuenta / descripción; botón "Nuevo Dep/Ret" en extraFilters
+- **DataTable** de alta densidad:
+  - Columnas: Fecha · Tipo (badge) · Monto (+/- en color semántico) · Broker · Cuenta · Descripción
+  - Sort por cualquier columna, paginación 25/50/100/Todos, exportar CSV
+  - **Acción Editar**: Row-level editing inline — todos los campos editables en la misma fila
+    - Validación: monto siempre positivo; tipo determina signo; guardar deshabilitado si monto ≤ 0
+    - Brokers y Cuentas desde listas dinámicas del memoryState
+  - **Acción Eliminar**: con confirmación
 
 ## 10. Navegación
 
 - Barra superior con pestañas: Dashboard, Analytics, Posiciones, Trades, Operaciones, Cuentas, Brokers
-- Botones de acción: I/E y Nueva Op.
-- Cuentas, Brokers, I/E y Nueva Op. se renderizan como vistas inline de pantalla completa
-- FilterBar oculto en vistas de gestión (Cuentas, Brokers, Nueva Op, I/E)
+- Botones de acción: **Dep / Ret** (abre vista movimientos) y **Nueva Op.**
+- Cuentas, Brokers y Nueva Op. se renderizan como vistas inline de pantalla completa
+- FilterBar visible en: Dashboard, Analytics, Posiciones, Trades, Operaciones, **Movimientos**
+- FilterBar oculto en vistas de gestión puro: Cuentas, Brokers, formulario Nueva Op, formulario Dep/Ret
 
 ## 11. Datos de Demo
 

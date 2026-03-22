@@ -4,6 +4,50 @@ Registro cronológico de los prompts del usuario por sesión. Útil para reconst
 
 ---
 
+## 21 de Marzo, 2026 — Sesión v9
+
+### Prompt 1
+> "haceme un listado de todos los ingresos y egresos que voy registrando, con el formato que ya he definido."
+
+**Resultado:** Se creó un listado inline debajo del formulario I/E con tabla manual (sin usar el DataTable existente). Campo `cuenta` agregado a la interface `CashFlow`. Fix fecha `T12:00:00` en `addMemoryCashFlow`. `getMemoryCashFlows` y `removeMemoryCashFlow` integrados en page.tsx.
+
+---
+
+### Prompt 2
+> "los movimientos se deben ver en una pantalla que sea de movimientos de cash con lo estilos y funcionalidad de las tablas que ya tenes definidas. Al guardar un nuevo ingreso/egreso se debe dirigir a la pantalla de movimientos."
+
+**Resultado:** Nueva vista `movimientos` con DataTable. Nav "I/E" → setView("movimientos"). Botón "+ Nuevo I/E" en extraFilters. Al guardar navega a movimientos. FilterBar excluido (error: ver Prompt 3).
+
+---
+
+### Prompt 3
+> "no estas respentando la funcionalidad y estetica de las listas definidas en los 3 archivos de UI (md)"
+
+**Resultado:** Relectura de `UI.md`, `UI-List.md`, `UI-Behavior.md`. Implementación correcta de los 3 bloques: MetricCards (Ingresos, Egresos, Balance Neto, Movimientos) + FilterBar compartido (ya no excluido para movimientos, búsqueda dinámica por broker/cuenta/descripción) + DataTable. `filteredCashFlows` useMemo con filtro por `activeInterval` y `searchQuery`.
+
+---
+
+### Prompt 4
+> "al listado de ingresos/egresos agregale la accion de editar y que se compro como Row-level Editing y que te permita editar todos los campos. Validar el tema de montos con el tipo, por los negativos y positivos"
+
+**Resultado:** `updateCashFlow` en data-loader.ts, `updateMemoryCashFlow` server action. DataTable extendido con props `editingRowId`, `renderEditRow`, `onCancelEdit`. Row-level editing con todos los campos editables inline (inputs + selects dinámicos). Validación: monto siempre positivo, signo determinado por tipo, guardar desactivado si monto ≤ 0.
+
+---
+
+### Prompt 5
+> "cambia los nombres de ingresos y egresos por Depósitos y Retiros, tambien modifica el nombre del menu y botones. La navegacion luego de agregar un deposito o retiro debe ir la ventana depositos y retiros"
+
+**Resultado:** "Ingreso" → "Depósito", "Egreso" → "Retiro" en toda la UI. Menú "I/E" → "Dep / Ret". Botón "Nuevo I/E" → "Nuevo Dep/Ret". Título del formulario actualizado. Toggle del formulario y de edición inline actualizados. Navegación post-guardar ya iba a movimientos (correcto desde Prompt 2).
+
+---
+
+### Prompt 6
+> "Actualiza el archivo de funcionalidad.md con todo lo nuevo de esta sesión, y si borraste algo de funcionalidad también debes actualizarlo. Escribe los cambios en esta sesion por un lado, pero por otro manten el listado global de todas las funcionalidades. Escribe un archivo en /bitacora/prompts tipo bitácora con todos los prompt que escribí en esta sesión. escribe archivos dentro de /bitacora, uno que diga lo que hiciste, otro que diga lo que falta, otro que diga si tuviste errores y que aprendiste de ellos. otro con el contexto actual listo para una nueva session. Si ya estan creados añade el contenido tipo bitacora, con fecha y descripción, no borres el contenido anterior."
+
+**Resultado:** Actualización de todos los archivos de documentación y bitácora.
+
+---
+
 ## 21 de Marzo, 2026 — Sesión v8
 
 ### Prompt 1

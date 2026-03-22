@@ -7,7 +7,7 @@ import {
   TrendingUp, TrendingDown, DollarSign,
   Briefcase, Percent, Clock, PieChart, Wallet,
   Trophy, AlertCircle, Plus, RefreshCw,
-  ArrowUpRight, ArrowDownRight, Layers, Scale
+  ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X
 } from "lucide-react";
 import {
   format, startOfToday, endOfToday,
@@ -30,13 +30,13 @@ import BrokersSection from "@/components/brokers/BrokersSection";
 // Server Actions
 import { getYieldsData as getYields, getStats, getDashboardSummary, getTopStats, getEquityCurve } from "@/server/actions/dashboard";
 import { getOperations, getTrades, createOperation, getOpenPositions, deleteOperation, deleteTrade, closeTradeManually, updateOperation, closeTradeWithQuantity } from "@/server/actions/trades";
-import { addMemoryCashFlow, getMemoryCuentas, addMemoryCuenta, removeMemoryCuenta, updateMemoryCuenta, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker } from "@/server/actions/transactions";
+import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryCuentas, addMemoryCuenta, removeMemoryCuenta, updateMemoryCuenta, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker } from "@/server/actions/transactions";
 import TradeForm from "@/components/trades/TradeForm";
 import DropdownMultiCheck from "@/components/ui/DropdownMultiCheck";
 import { exportToCSV, downloadCSV } from "@/lib/csv-exporter";
 
 // Tipos
-type View = "dashboard" | "analytics" | "operations" | "trades" | "open" | "cuentas" | "brokers" | "nueva-op" | "ie";
+type View = "dashboard" | "analytics" | "operations" | "trades" | "open" | "cuentas" | "brokers" | "nueva-op" | "ie" | "movimientos";
 
 export default function Home() {
   // Estado Global
@@ -81,6 +81,9 @@ export default function Home() {
   const [operations, setOperations] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
   const [openPositions, setOpenPositions] = useState<any[]>([]);
+  const [cashFlows, setCashFlows] = useState<any[]>([]);
+  const [editingCfId, setEditingCfId] = useState<number | null>(null);
+  const [editDraft, setEditDraft] = useState<{ date: string; type: 'DEPOSIT' | 'WITHDRAWAL'; amount: string; broker: string; cuenta: string; description: string } | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [topStats, setTopStats] = useState<any>(null);
   const [equityCurve, setEquityCurve] = useState<{ date: string; equity: number; trade: string }[]>([]);
@@ -104,7 +107,7 @@ export default function Home() {
   const fetchData = async (isInitial = false) => {
     if (isInitial) setLoading(true); else setRefreshing(true);
     try {
-      const [ops, trs, openPos, st, yld, summ, top, cuentasList, brokersList] = await Promise.all([
+      const [ops, trs, openPos, st, yld, summ, top, cuentasList, brokersList, cfs] = await Promise.all([
         getOperations(),
         getTrades(),
         getOpenPositions(),
@@ -114,6 +117,7 @@ export default function Home() {
         getTopStats(activeInterval.start, activeInterval.end),
         getMemoryCuentas(),
         getMemoryBrokers(),
+        getMemoryCashFlows(),
       ]);
       setOperations(ops);
       setTrades(trs);
@@ -124,6 +128,7 @@ export default function Home() {
       setTopStats(top);
       setCuentas(cuentasList);
       setBrokers(brokersList);
+      setCashFlows(cfs);
 
       if (view === "analytics") {
         const curve = await getEquityCurve();
@@ -163,7 +168,7 @@ export default function Home() {
   }, [view]);
 
   const navigateTo = (v: View) => { setPrevView(view); setView(v); };
-  const navigateBack = () => setView(prevView === "nueva-op" || prevView === "ie" || prevView === "cuentas" || prevView === "brokers" ? "dashboard" : prevView);
+  const navigateBack = () => setView(prevView === "nueva-op" || prevView === "ie" || prevView === "cuentas" || prevView === "brokers" || prevView === "movimientos" ? "dashboard" : prevView);
 
   // Sync year multicheck → dateFilter range for stats and matrix
   const handleYearsChange = (years: string[]) => {
@@ -377,8 +382,43 @@ export default function Home() {
     date: string; amount: number; type: "DEPOSIT" | "WITHDRAWAL"; broker: string; cuenta: string; description?: string;
   }) => {
     await addMemoryCashFlow(data);
-    navigateBack();
-    await fetchData();
+    setCashFlows(await getMemoryCashFlows());
+    setView("movimientos");
+  };
+
+  const handleEditCashFlow = (row: any) => {
+    setEditingCfId(row.id);
+    const d = row.date instanceof Date ? row.date : new Date(String(row.date) + 'T12:00:00');
+    setEditDraft({
+      date: d.toISOString().slice(0, 10),
+      type: row.type,
+      amount: String(Math.abs(row.amount)),
+      broker: row.broker || '',
+      cuenta: row.cuenta || 'USA',
+      description: row.description || '',
+    });
+  };
+
+  const handleCancelEditCashFlow = () => {
+    setEditingCfId(null);
+    setEditDraft(null);
+  };
+
+  const handleSaveCashFlowEdit = async () => {
+    if (!editDraft || !editingCfId) return;
+    const amt = parseFloat(editDraft.amount);
+    if (isNaN(amt) || amt <= 0) return;
+    await updateMemoryCashFlow(editingCfId, {
+      date: editDraft.date,
+      amount: Math.abs(amt),
+      type: editDraft.type,
+      broker: editDraft.broker,
+      cuenta: editDraft.cuenta,
+      description: editDraft.description || undefined,
+    });
+    setCashFlows(await getMemoryCashFlows());
+    setEditingCfId(null);
+    setEditDraft(null);
   };
 
   const handleDeleteOp = async (row: any) => {
@@ -476,6 +516,25 @@ export default function Home() {
     });
   }, [operations, trades, openPositions, view, activeInterval, searchQuery, brokerFilters, cuentaFilters, instrumentFilters, tradeEstadoFilters]);
 
+  // Filtered cashflows para vista movimientos
+  const filteredCashFlows = useMemo(() => {
+    return [...cashFlows]
+      .filter((cf) => {
+        const d = cf.date instanceof Date ? cf.date : new Date(String(cf.date) + 'T12:00:00');
+        if (!isWithinInterval(d, activeInterval)) return false;
+        if (searchQuery) {
+          const term = searchQuery.toLowerCase();
+          if (
+            !cf.broker?.toLowerCase().includes(term) &&
+            !cf.cuenta?.toLowerCase().includes(term) &&
+            !cf.description?.toLowerCase().includes(term)
+          ) return false;
+        }
+        return true;
+      })
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [cashFlows, activeInterval, searchQuery]);
+
   // Column definitions — orden exacto según requirements.md
   // Operations: ID, Fecha, Símbolo, Cantidad, Precio, Monto, Broker, Falopa, Intra
   const operationColumns: ColumnDef<any>[] = [
@@ -510,6 +569,16 @@ export default function Home() {
     { key: "isClosed", header: "Estado", align: "center", render: (v) => <span className={cn("text-[10px] font-bold uppercase px-1.5 py-0.5 rounded", v ? "bg-zinc-700 text-zinc-400" : "bg-blue-900/30 text-blue-400")}>{v ? "CERRADO" : "ABIERTO"}</span> },
     { key: "broker", header: "Broker", align: "center", sortable: true },
     { key: "cuenta", header: "Cuenta", align: "center", sortable: true },
+  ];
+
+  // Movimientos (CashFlow): Fecha, Tipo, Monto, Broker, Cuenta, Descripción
+  const cashFlowColumns: ColumnDef<any>[] = [
+    { key: "date", header: "Fecha", align: "center", sortable: true, render: (v) => { const d = v instanceof Date ? v : new Date(String(v) + 'T12:00:00'); return d.toLocaleDateString("es-AR"); } },
+    { key: "type", header: "Tipo", align: "center", render: (v) => <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider", v === "DEPOSIT" ? "bg-emerald-900/50 text-emerald-400" : "bg-red-900/50 text-red-400")}>{v === "DEPOSIT" ? "▲ Depósito" : "▼ Retiro"}</span> },
+    { key: "amount", header: "Monto", align: "right", sortable: true, render: (v, row) => <span className={cn("font-mono font-semibold tabular-nums", row.type === "DEPOSIT" ? "text-emerald-400" : "text-red-400")}>{row.type === "DEPOSIT" ? "+" : "-"}${Math.abs(Number(v)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
+    { key: "broker", header: "Broker", align: "center", sortable: true },
+    { key: "cuenta", header: "Cuenta", align: "center", sortable: true, render: (v) => v ? String(v) : <span className="text-zinc-600">—</span> },
+    { key: "description", header: "Descripción", render: (v) => v ? String(v) : <span className="text-zinc-600">—</span> },
   ];
 
   if (loading) return (
@@ -554,11 +623,11 @@ export default function Home() {
               </button>
             ))}
             <div className="w-px h-4 bg-white/10 mx-1" />
-            <button onClick={() => navigateTo("ie")}
+            <button onClick={() => setView("movimientos")}
               className={cn("flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all",
-                view === "ie" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300")}>
+                view === "movimientos" || view === "ie" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300")}>
               <DollarSign className="w-3.5 h-3.5" />
-              I/E
+              Dep / Ret
             </button>
             <button
               onClick={() => { setEditingOperation(null); navigateTo("nueva-op"); }}
@@ -608,7 +677,7 @@ export default function Home() {
             onCustomRangeChange={setCustomRange}
             searchValue={searchQuery}
             onSearchChange={setSearchQuery}
-            searchPlaceholder="Buscar por símbolo, broker o instrumento..."
+            searchPlaceholder={view === "movimientos" ? "Buscar por broker, cuenta o descripción..." : "Buscar por símbolo, broker o instrumento..."}
             hideSearch={view === "dashboard"}
             extraFilters={
               <div className="ml-auto flex items-center gap-3 flex-wrap">
@@ -645,10 +714,21 @@ export default function Home() {
                     allLabel="Todos"
                   />
                 )}
-                <div className="bg-zinc-950 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                  <span className="text-[10px] font-bold uppercase text-zinc-400">Sistema Online</span>
-                </div>
+                {view === "movimientos" && (
+                  <button
+                    onClick={() => navigateTo("ie")}
+                    className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Nuevo Dep/Ret
+                  </button>
+                )}
+                {view !== "movimientos" && (
+                  <div className="bg-zinc-950 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                    <span className="text-[10px] font-bold uppercase text-zinc-400">Sistema Online</span>
+                  </div>
+                )}
               </div>
             }
           />
@@ -1098,7 +1178,7 @@ export default function Home() {
           </div>
         )}
 
-        {/* --- INGRESOS / EGRESOS VIEW --- */}
+        {/* --- INGRESOS / EGRESOS FORM --- */}
         {view === "ie" && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <CashFlowForm
@@ -1108,6 +1188,138 @@ export default function Home() {
             />
           </div>
         )}
+
+        {/* --- MOVIMIENTOS VIEW --- */}
+        {view === "movimientos" && (() => {
+          const totalIngresos = filteredCashFlows.filter(c => c.type === 'DEPOSIT').reduce((s, c) => s + c.amount, 0);
+          const totalEgresos = filteredCashFlows.filter(c => c.type === 'WITHDRAWAL').reduce((s, c) => s + c.amount, 0);
+          const balanceNeto = totalIngresos - totalEgresos;
+          const draftAmt = editDraft ? parseFloat(editDraft.amount) : NaN;
+          const amountInvalid = editDraft != null && (isNaN(draftAmt) || draftAmt <= 0);
+
+          const renderCashFlowEditRow = (row: any) => {
+            if (!editDraft || row.id !== editingCfId) return null;
+            const inputCls = "w-full px-2 py-0.5 bg-zinc-950 border border-blue-500/40 rounded text-[12px] text-zinc-200 outline-none focus:border-blue-400";
+            return (
+              <>
+                {/* Fecha */}
+                <td className="py-1 px-3">
+                  <input type="date" value={editDraft.date}
+                    onChange={e => setEditDraft({ ...editDraft, date: e.target.value })}
+                    className={inputCls} />
+                </td>
+                {/* Tipo */}
+                <td className="py-1 px-3 text-center">
+                  <div className="flex gap-1">
+                    {(['DEPOSIT', 'WITHDRAWAL'] as const).map(t => (
+                      <button key={t} type="button" onClick={() => setEditDraft({ ...editDraft, type: t })}
+                        className={cn(
+                          "flex-1 py-0.5 rounded text-[9px] font-black uppercase tracking-wide transition-all",
+                          editDraft.type === t
+                            ? t === 'DEPOSIT' ? 'bg-emerald-600 text-white' : 'bg-red-600 text-white'
+                            : 'border border-white/10 text-zinc-500 hover:text-zinc-300'
+                        )}>
+                        {t === 'DEPOSIT' ? '▲ Dep' : '▼ Ret'}
+                      </button>
+                    ))}
+                  </div>
+                </td>
+                {/* Monto — siempre positivo; el tipo determina el signo */}
+                <td className="py-1 px-3">
+                  <div className="flex items-center gap-1">
+                    <span className={cn("text-[11px] font-black shrink-0", editDraft.type === 'DEPOSIT' ? 'text-emerald-400' : 'text-red-400')}>
+                      {editDraft.type === 'DEPOSIT' ? '+' : '−'}$
+                    </span>
+                    <input type="number" value={editDraft.amount} min="0.01" step="any"
+                      onChange={e => setEditDraft({ ...editDraft, amount: e.target.value })}
+                      placeholder="0.00"
+                      className={cn(inputCls, "text-right", amountInvalid && "border-red-500/60 text-red-400")} />
+                  </div>
+                  {amountInvalid && <p className="text-[9px] text-red-400 mt-0.5">Monto debe ser positivo</p>}
+                </td>
+                {/* Broker */}
+                <td className="py-1 px-3 text-center">
+                  <select value={editDraft.broker} onChange={e => setEditDraft({ ...editDraft, broker: e.target.value })}
+                    className={inputCls}>
+                    {brokers.length > 0
+                      ? brokers.map((b: any) => <option key={b.id} value={b.nombre}>{b.nombre}</option>)
+                      : ["Schwab","Binance","Cocos","Balanz","AMR","IOL","IBKR","PP"].map(b => <option key={b}>{b}</option>)
+                    }
+                  </select>
+                </td>
+                {/* Cuenta */}
+                <td className="py-1 px-3 text-center">
+                  <select value={editDraft.cuenta} onChange={e => setEditDraft({ ...editDraft, cuenta: e.target.value })}
+                    className={inputCls}>
+                    {cuentas.length > 0
+                      ? cuentas.map((c: any) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
+                      : ["USA","Argentina","CRYPTO"].map(c => <option key={c}>{c}</option>)
+                    }
+                  </select>
+                </td>
+                {/* Descripción */}
+                <td className="py-1 px-3">
+                  <input type="text" value={editDraft.description}
+                    onChange={e => setEditDraft({ ...editDraft, description: e.target.value })}
+                    placeholder="Descripción opcional"
+                    className={inputCls} />
+                </td>
+                {/* Acciones guardar/cancelar */}
+                <td className="py-1 px-3 text-right">
+                  <div className="flex items-center justify-end gap-2">
+                    <button onClick={handleSaveCashFlowEdit} disabled={amountInvalid}
+                      className="text-emerald-400 hover:text-emerald-300 disabled:opacity-30 transition-colors" title="Guardar">
+                      <Check className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={handleCancelEditCashFlow}
+                      className="text-zinc-500 hover:text-zinc-300 transition-colors" title="Cancelar">
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </td>
+              </>
+            );
+          };
+
+          return (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-4">
+              {/* Bloque 1 — Metric cards */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <MetricCard title="Depósitos" value={`$${Math.round(totalIngresos).toLocaleString('es-AR')}`} subtitle={`${filteredCashFlows.filter(c => c.type === 'DEPOSIT').length} movimientos`} accentColor="emerald" icon={ArrowUpRight} />
+                <MetricCard title="Retiros" value={`$${Math.round(totalEgresos).toLocaleString('es-AR')}`} subtitle={`${filteredCashFlows.filter(c => c.type === 'WITHDRAWAL').length} movimientos`} accentColor="red" icon={ArrowDownRight} />
+                <MetricCard title="Balance Neto" value={`$${Math.round(balanceNeto).toLocaleString('es-AR')}`} subtitle="depósitos − retiros" accentColor={balanceNeto >= 0 ? "blue" : "orange"} icon={DollarSign} />
+                <MetricCard title="Movimientos" value={String(filteredCashFlows.length)} subtitle="en el período" accentColor="purple" icon={Clock} />
+              </div>
+
+              {/* Bloque 2 — DataTable con row-level editing */}
+              <DataTable
+                data={filteredCashFlows}
+                columns={cashFlowColumns}
+                editingRowId={editingCfId}
+                renderEditRow={renderCashFlowEditRow}
+                onCancelEdit={handleCancelEditCashFlow}
+                onEdit={handleEditCashFlow}
+                onDelete={async (row: any) => {
+                  if (!confirm('¿Eliminar este movimiento?')) return;
+                  await removeMemoryCashFlow(row.id);
+                  setCashFlows(await getMemoryCashFlows());
+                }}
+                onExport={() => {
+                  const csv = exportToCSV(filteredCashFlows, [
+                    { key: 'date', header: 'Fecha' },
+                    { key: 'type', header: 'Tipo' },
+                    { key: 'amount', header: 'Monto' },
+                    { key: 'broker', header: 'Broker' },
+                    { key: 'cuenta', header: 'Cuenta' },
+                    { key: 'description', header: 'Descripción' },
+                  ]);
+                  downloadCSV(csv, `movimientos-${new Date().toISOString().split('T')[0]}.csv`);
+                }}
+                emptyMessage="Sin movimientos en el período seleccionado"
+              />
+            </div>
+          );
+        })()}
 
         {/* --- CUENTAS VIEW --- */}
         {view === "cuentas" && (

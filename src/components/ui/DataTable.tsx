@@ -21,6 +21,9 @@ interface DataTableProps<T extends { id: number | string }> {
   rowsPerPageOptions?: number[];
   defaultRowsPerPage?: number;
   emptyMessage?: string;
+  editingRowId?: number | string | null;
+  renderEditRow?: (row: T) => React.ReactNode;
+  onCancelEdit?: () => void;
 }
 
 export default function DataTable<T extends { id: number | string }>({
@@ -33,6 +36,9 @@ export default function DataTable<T extends { id: number | string }>({
   rowsPerPageOptions = [25, 50, 100],
   defaultRowsPerPage = 50,
   emptyMessage = "Sin registros",
+  editingRowId = null,
+  renderEditRow,
+  onCancelEdit,
 }: DataTableProps<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null);
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -122,30 +128,41 @@ export default function DataTable<T extends { id: number | string }>({
           <tbody className="divide-y divide-white/[0.04]">
             {displayed.length === 0 ? (
               <tr><td colSpan={columns.length + (hasActions ? 1 : 0)} className="py-8 text-center text-zinc-600 text-sm">{emptyMessage}</td></tr>
-            ) : displayed.map(row => (
-              <tr key={row.id} className="group hover:bg-white/[0.03] transition-colors h-8">
-                {columns.map(col => {
-                  const val = (row as Record<string, unknown>)[col.key];
-                  return (
-                    <td key={col.key} className={cn(
-                      "py-1 px-3 text-[13px]",
-                      col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"
-                    )}>
-                      {col.render ? col.render(val, row) : String(val ?? "-")}
+            ) : displayed.map(row => {
+              const isEditing = editingRowId != null && row.id === editingRowId;
+              if (isEditing && renderEditRow) {
+                return (
+                  <tr key={row.id} className="bg-blue-950/20 border-b border-blue-500/20">
+                    {renderEditRow(row)}
+                  </tr>
+                );
+              }
+              return (
+                <tr key={row.id} className="group hover:bg-white/[0.03] transition-colors h-8">
+                  {columns.map(col => {
+                    const val = (row as Record<string, unknown>)[col.key];
+                    return (
+                      <td key={col.key} className={cn(
+                        "py-1 px-3 text-[13px]",
+                        col.align === "right" ? "text-right" : col.align === "center" ? "text-center" : "text-left"
+                      )}>
+                        {col.render ? col.render(val, row) : String(val ?? "-")}
+                      </td>
+                    );
+                  })}
+                  {hasActions && (
+                    <td className="py-1 px-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        {onView && <button onClick={() => onView(row)} className="text-zinc-600 hover:text-blue-400 transition-colors"><Eye className="w-3.5 h-3.5" /></button>}
+                        {onEdit && <button onClick={() => onEdit(row)} className="text-zinc-600 hover:text-zinc-200 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>}
+                        {onDelete && <button onClick={() => onDelete(row)} className="text-zinc-600 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>}
+                        {onCancelEdit && isEditing && <button onClick={onCancelEdit} className="text-zinc-600 hover:text-zinc-300 transition-colors text-[10px]">✕</button>}
+                      </div>
                     </td>
-                  );
-                })}
-                {hasActions && (
-                  <td className="py-1 px-3 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      {onView && <button onClick={() => onView(row)} className="text-zinc-600 hover:text-blue-400 transition-colors"><Eye className="w-3.5 h-3.5" /></button>}
-                      {onEdit && <button onClick={() => onEdit(row)} className="text-zinc-600 hover:text-zinc-200 transition-colors"><Pencil className="w-3.5 h-3.5" /></button>}
-                      {onDelete && <button onClick={() => onDelete(row)} className="text-zinc-600 hover:text-red-400 transition-colors"><Trash2 className="w-3.5 h-3.5" /></button>}
-                    </div>
-                  </td>
-                )}
-              </tr>
-            ))}
+                  )}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

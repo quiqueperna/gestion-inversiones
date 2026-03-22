@@ -1,5 +1,143 @@
 # Contexto de Sesión - Gestión de Inversiones
-<!-- LEER PRIMERO: el bloque más reciente (v7, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+<!-- LEER PRIMERO: el bloque más reciente (v8, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+
+---
+
+## 21 de Marzo, 2026 — Estado actual tras sesión v9 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** in-memory CSV → `src/lib/data-loader.ts` → `memoryState` (operations, trades, cashFlows, cuentas, brokers)
+- **Prisma (SQLite):** configurado pero inactivo. Solo `transactions.ts` tiene funciones Prisma legacy sin usar.
+- **Tests:** Vitest (unitarios + integración) + Playwright E2E
+
+### Navegación (View type)
+```typescript
+type View = "dashboard" | "analytics" | "operations" | "trades" | "open" | "cuentas" | "brokers" | "nueva-op" | "ie" | "movimientos";
+```
+- `cuentas`, `brokers`, `nueva-op`, `ie` → no muestran FilterBar
+- `movimientos` → muestra FilterBar (filtra cashFlows por período y búsqueda)
+- Nav "Dep / Ret" → `movimientos` · Botón "Nuevo Dep/Ret" dentro de movimientos → `ie`
+- `nueva-op` e `ie` renderizan el formulario inline (`inline={true}`)
+
+### Qué funciona hoy
+
+| Feature | Estado |
+|---|---|
+| Dashboard: YieldsGrid meses×cuentas, CalendarGrid diario | ✅ |
+| Dashboard: selector multi-año, multi-cuenta, Balance Total, Resultado Neto | ✅ |
+| Analytics: 15+ métricas en español + tooltips + pie charts | ✅ |
+| Posiciones / Trades / Operaciones con filtros DropdownMultiCheck | ✅ |
+| Nueva Op inline: cierre parcial FIFO cascade | ✅ |
+| **Vista Movimientos**: MetricCards + FilterBar + DataTable (Depósitos/Retiros) | ✅ |
+| **Row-level Editing en Movimientos**: todos los campos editables inline con validación | ✅ |
+| **Terminología Depósitos/Retiros** en toda la UI | ✅ |
+| CashFlow: campo `cuenta`, `updateCashFlow`, fix fecha T12:00:00 | ✅ |
+| DataTable extendido: `editingRowId` / `renderEditRow` / `onCancelEdit` | ✅ |
+| Cuentas CRUD, Brokers CRUD | ✅ |
+| TypeScript sin errores (`npx tsc --noEmit`) | ✅ |
+
+### Archivos clave
+
+| Archivo | Rol |
+|---|---|
+| `src/lib/data-loader.ts` | Motor central: FIFO, memoryState, CRUD cashflows (add/remove/update), cuentas, brokers |
+| `src/app/page.tsx` | UI principal — todas las vistas, navegación, handlers, filteredCashFlows, renderCashFlowEditRow |
+| `src/server/actions/trades.ts` | getOpenPositions, closeTradeWithQuantity, CRUD operaciones |
+| `src/server/actions/dashboard.ts` | getStats, getYieldsData, getDashboardSummary, getTopStats, getEquityCurve |
+| `src/server/actions/transactions.ts` | CashFlow CRUD (add/remove/update) + Cuentas + Brokers server actions |
+| `src/components/ui/DataTable.tsx` | Tabla genérica + row-level editing (editingRowId/renderEditRow/onCancelEdit) |
+| `src/components/cashflow/CashFlowForm.tsx` | Formulario Depósito/Retiro inline |
+| `src/components/dashboard/YieldsGrid.tsx` | Grilla mensual |
+| `src/components/dashboard/CalendarGrid.tsx` | Grilla diaria |
+| `src/components/trades/TradeForm.tsx` | Form inline, panel posiciones, pendingClose |
+
+### Convención de fechas (crítico)
+**Nunca usar `new Date("YYYY-MM-DD")`** — parsea como UTC midnight → desplaza -1 día en UTC negativo.
+**Siempre:** `new Date(dateStr + 'T12:00:00')` → mediodía local, seguro en cualquier zona horaria.
+**Serializar fechas de server actions:** `instanceof Date ? d.toISOString().slice(0,10) : String(d).slice(0,10)`.
+
+### Para arrancar una nueva sesión
+```bash
+taskkill /IM node.exe /F   # Windows: matar servidores viejos
+npm run dev                 # dev en :3000
+npx tsc --noEmit            # debe dar 0 errores
+npm run test                # tests vitest
+```
+
+### Pendientes para próxima sesión
+Ver `bitacora/pendientes.md`. Top:
+1. **Brokers en CashFlowForm** — selects hardcodeados, debería usar `getMemoryBrokers()` — P2
+2. **Tests para `closeTradeWithQuantity`** — casos parcial, exacto, cascade, exceso — P2
+3. **Sidebar lateral** — reemplazar nav horizontal — P3
+
+---
+
+## 21 de Marzo, 2026 — Estado actual tras sesión v8 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** in-memory CSV → `src/lib/data-loader.ts` → `memoryState` (operations, trades, cashFlows, cuentas, brokers)
+- **Prisma (SQLite):** configurado pero inactivo. Solo `transactions.ts` tiene funciones Prisma legacy sin usar.
+- **Tests:** Vitest (unitarios + integración) + Playwright E2E
+
+### Navegación (View type)
+```typescript
+type View = "dashboard" | "analytics" | "operations" | "trades" | "open" | "cuentas" | "brokers" | "nueva-op" | "ie";
+```
+- `cuentas`, `brokers`, `nueva-op`, `ie` → no muestran FilterBar
+- `nueva-op` e `ie` renderizan el formulario inline (`inline={true}`)
+
+### Qué funciona hoy
+
+| Feature | Estado |
+|---|---|
+| Dashboard: YieldsGrid meses×cuentas — columnas igual ancho, números es-AR, `PL $`/`PL %` | ✅ |
+| Dashboard: CalendarGrid diario — semanas `Sem. N` ascendentes, `PL Mensual:` alineado derecha | ✅ |
+| Dashboard: selector multi-año, modo "Todos" agrupa por año | ✅ |
+| Dashboard: Resultado Neto + Balance Total, filtro de período sincronizado | ✅ |
+| Analytics: 15+ métricas en español + tooltip al clic, pie charts | ✅ |
+| Posiciones: filtro de período por openDate, cuenta real, broker/cuenta al final | ✅ |
+| Trades: filtro de período por closeDate, trades abiertos inmunes | ✅ |
+| Operaciones: broker/cuenta al final, filtros broker+cuenta DropdownMultiCheck | ✅ |
+| Nueva Op (inline): panel posiciones abiertas, confirmación de cierre, cierre parcial FIFO cascade | ✅ |
+| I/E (inline): Fecha, Monto, Tipo, Broker, Cuenta, Descripción | ✅ |
+| Cuentas: CRUD completo inline | ✅ |
+| Brokers: CRUD completo inline | ✅ |
+| Fix fechas UTC: `T12:00:00` en todos los puntos de parseo | ✅ |
+| TypeScript sin errores (`npx tsc --noEmit`) | ✅ |
+
+### Archivos clave
+
+| Archivo | Rol |
+|---|---|
+| `src/lib/data-loader.ts` | Motor central: FIFO, memoryState, CRUD cuentas/brokers/cashflows |
+| `src/app/page.tsx` | UI principal — todas las vistas, navegación, handlers, `toDateStr` helper |
+| `src/server/actions/trades.ts` | getOpenPositions, closeTradeWithQuantity, closeTradeManually, CRUD |
+| `src/server/actions/dashboard.ts` | getStats, getYieldsData, getDashboardSummary, getTopStats, getEquityCurve |
+| `src/server/actions/transactions.ts` | CashFlow + Cuentas + Brokers server actions |
+| `src/components/dashboard/YieldsGrid.tsx` | Grilla mensual — table-fixed, colgroup, fmt es-AR |
+| `src/components/dashboard/CalendarGrid.tsx` | Grilla diaria — weekNums precomputados, weekOffset |
+| `src/components/trades/TradeForm.tsx` | Form inline, panel posiciones, pendingClose con openDate normalizado |
+
+### Convención de fechas (crítico)
+**Nunca usar `new Date("YYYY-MM-DD")`** — parsea como UTC midnight → desplaza -1 día en UTC negativo.
+**Siempre:** `new Date(dateStr + 'T12:00:00')` → mediodía local, seguro en cualquier zona horaria.
+**Serializar fechas de server actions:** objetos `Date` no son ISO strings. Usar `instanceof Date ? d.toISOString().slice(0,10) : String(d).slice(0,10)`.
+
+### Para arrancar una nueva sesión
+```bash
+taskkill /IM node.exe /F   # Windows: matar servidores viejos
+npm run dev                 # dev en :3000
+npx tsc --noEmit            # debe dar 0 errores
+npm run test                # tests vitest
+```
+
+### Pendientes para próxima sesión
+Ver `bitacora/pendientes.md`. Top:
+1. **Brokers en selects de TradeForm/CashFlowForm** desde `getMemoryBrokers()` — P2
+2. **Tests para `closeTradeWithQuantity`** — casos parcial, exacto, cascade, exceso — P2
+3. **Sidebar lateral** — reemplazar nav horizontal — P3
 
 ---
 

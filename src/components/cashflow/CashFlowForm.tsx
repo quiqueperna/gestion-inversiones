@@ -46,7 +46,7 @@ export default function CashFlowForm({ onClose, onSave, inline = false }: CashFl
       <div className="bg-zinc-900 rounded-lg w-full max-w-md border border-white/10 shadow-2xl overflow-hidden">
         <div className="p-4 border-b border-white/10 flex justify-between items-center">
           <h2 className="text-[12px] font-bold uppercase tracking-widest text-white">
-            Nuevo Ingreso / Egreso
+            Nuevo Depósito / Retiro
           </h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
             <X className="w-4 h-4" />
@@ -64,7 +64,7 @@ export default function CashFlowForm({ onClose, onSave, inline = false }: CashFl
                     ? t === "DEPOSIT" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
                     : "border border-white/10 text-zinc-500 hover:text-zinc-300"
                 )}>
-                {t === "DEPOSIT" ? "▲ Ingreso" : "▼ Egreso"}
+                {t === "DEPOSIT" ? "▲ Depósito" : "▼ Retiro"}
               </button>
             ))}
           </div>

@@ -60,6 +60,7 @@ export interface CashFlow {
     amount: number;
     type: 'DEPOSIT' | 'WITHDRAWAL';
     broker: string;
+    cuenta?: string;
     description?: string;
 }
 
@@ -273,6 +274,14 @@ export function removeCashFlow(id: number): boolean {
   const idx = state.cashFlows.findIndex(c => c.id === id);
   if (idx === -1) return false;
   state.cashFlows.splice(idx, 1);
+  return true;
+}
+
+export function updateCashFlow(id: number, data: Partial<Omit<CashFlow, 'id'>>): boolean {
+  const state = getMemoryState();
+  const cf = state.cashFlows.find(c => c.id === id);
+  if (!cf) return false;
+  Object.assign(cf, data);
   return true;
 }
 
