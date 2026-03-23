@@ -30,19 +30,14 @@ async function ensureLoaded() {
     db.broker.findMany(),
   ]);
 
-  if (dbExecutions.length > 0) {
-    initializeFromDB({
-      executions: dbExecutions,
-      tradeUnits: dbTradeUnits,
-      cashFlows: dbCashFlows,
-      accounts: dbAccounts,
-      brokers: dbBrokers,
-    });
-  } else {
-    const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
-    const csvText = fs.readFileSync(csvPath, 'utf-8');
-    initializeMemoryState(csvText, true);
-  }
+  // Siempre inicializa desde DB aunque esté vacía (nunca fallback a CSV en producción)
+  initializeFromDB({
+    executions: dbExecutions,
+    tradeUnits: dbTradeUnits,
+    cashFlows: dbCashFlows,
+    accounts: dbAccounts,
+    brokers: dbBrokers,
+  });
   return getMemoryState();
 }
 
