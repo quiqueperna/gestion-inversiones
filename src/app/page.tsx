@@ -1353,6 +1353,7 @@ export default function Home() {
               inline
               onClose={() => { setEditingExecution(null); navigateBack(); }}
               onSave={handleSaveExecution}
+              brokers={brokers}
               accounts={accounts}
               onCloseExecution={async (entryExecId, qty, price, date, account, broker) => {
                 await closeTradeUnitWithQuantity({
@@ -1451,20 +1452,14 @@ export default function Home() {
                 <td className="py-1 px-3 text-center">
                   <select value={editDraft.broker} onChange={e => setEditDraft({ ...editDraft, broker: e.target.value })}
                     className={inputCls}>
-                    {brokers.length > 0
-                      ? brokers.map((b: any) => <option key={b.id} value={b.nombre}>{b.nombre}</option>)
-                      : ["Schwab","Binance","Cocos","Balanz","AMR","IOL","IBKR","PP"].map(b => <option key={b}>{b}</option>)
-                    }
+                    {brokers.map((b: any) => <option key={b.id} value={b.nombre}>{b.nombre}</option>)}
                   </select>
                 </td>
                 {/* Cuenta */}
                 <td className="py-1 px-3 text-center">
                   <select value={editDraft.account} onChange={e => setEditDraft({ ...editDraft, account: e.target.value })}
                     className={inputCls}>
-                    {accounts.length > 0
-                      ? accounts.map((c: any) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
-                      : ["USA","Argentina","CRYPTO"].map(c => <option key={c}>{c}</option>)
-                    }
+                    {accounts.map((c: any) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
                   </select>
                 </td>
                 {/* Descripción */}

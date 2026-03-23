@@ -32,9 +32,10 @@ interface TradeFormProps {
   onClosePosition?: (openOpId: number, quantity?: number, price?: number, date?: string) => Promise<void>;
   getOpenExecutionsForClosing?: (symbol: string, side: 'BUY' | 'SELL', account: string, broker: string) => Promise<any[]>;
   accounts?: Array<{ id: number; nombre: string; matchingStrategy?: string }>;
+  brokers?: Array<{ id: number; nombre: string }>;
 }
 
-export default function TradeForm({ onClose, onSave, initialData, inline = false, openTradeUnits = [], onCloseExecution, getOpenExecutionsForClosing, accounts }: TradeFormProps) {
+export default function TradeForm({ onClose, onSave, initialData, inline = false, openTradeUnits = [], onCloseExecution, getOpenExecutionsForClosing, accounts, brokers = [] }: TradeFormProps) {
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pendingClose, setPendingClose] = useState<{
@@ -53,8 +54,8 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
     resolver: zodResolver(tradeSchema),
     defaultValues: {
       entryDate: new Date().toISOString().split("T")[0],
-      broker: "Schwab",
-      account: "USA",
+      broker: brokers[0]?.nombre ?? "",
+      account: accounts?.[0]?.nombre ?? "",
       side: "BUY",
       isClosed: false,
       currency: "USD",
@@ -232,23 +233,14 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Broker</label>
                   <select {...register("broker")}
                     className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all appearance-none">
-                    {["Schwab","Binance","Cocos","Balanz","AMR","IOL","IBKR","PP"].map(b => <option key={b} value={b}>{b}</option>)}
+                    {brokers.map(b => <option key={b.id} value={b.nombre}>{b.nombre}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Cuenta</label>
                   <select {...register("account")}
                     className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all appearance-none">
-                    {accounts && accounts.length > 0
-                      ? accounts.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
-                      : (
-                        <>
-                          <option value="USA">USA</option>
-                          <option value="Argentina">Argentina</option>
-                          <option value="CRYPTO">CRYPTO</option>
-                        </>
-                      )
-                    }
+                    {(accounts ?? []).map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
