@@ -857,7 +857,7 @@ export default function Home() {
                   ${Math.round(totalMarketValue).toLocaleString()}
                 </h2>
                 <div className="flex gap-6 mt-4">
-                  <div><p className="text-[9px] font-bold text-zinc-500 uppercase">Trade Units Abiertas</p><p className="text-sm font-bold text-emerald-400">{tradeUnits.filter((t: any) => t.status === 'OPEN').length}</p></div>
+                  <div><p className="text-[9px] font-bold text-zinc-500 uppercase">Trades Abiertos</p><p className="text-sm font-bold text-emerald-400">{tradeUnits.filter((t: any) => t.status === 'OPEN').length}</p></div>
                 </div>
               </div>
             </div>
@@ -1393,6 +1393,7 @@ export default function Home() {
               inline
               onClose={() => navigateBack()}
               onSave={handleSaveCashFlow}
+              cuentas={cuentas.map((c: any) => c.nombre)}
             />
           </div>
         )}

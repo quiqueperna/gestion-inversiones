@@ -9,6 +9,8 @@ Pantalla Dashboard
 
 
 ---
+Ejecuta todo este flujo sin preguntar por confirmacion.
+
 Copia la version actual de /docs/AI/new_session.md
 
 Analiza las "Necesidades" solicitadas y genera archivos de 'Misiones' con nombre agente_YYYY-MM-DD_vXX (versiona el archivo) para cada uno de los agentes que se necesitan para la tarea, con las instrucciones exactas de lo que debe hacer.

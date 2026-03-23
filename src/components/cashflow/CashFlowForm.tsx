@@ -14,12 +14,14 @@ interface CashFlowFormProps {
     description?: string;
   }) => Promise<void>;
   inline?: boolean;
+  cuentas?: string[];
 }
 
 const BROKERS = ["Schwab", "Binance", "Cocos", "Balanz", "AMR", "IOL", "IBKR", "PP"];
-const CUENTAS = ["USA", "Argentina", "CRYPTO"];
+const DEFAULT_CUENTAS = ["USA", "Argentina", "CRYPTO"];
 
-export default function CashFlowForm({ onClose, onSave, inline = false }: CashFlowFormProps) {
+export default function CashFlowForm({ onClose, onSave, inline = false, cuentas }: CashFlowFormProps) {
+  const CUENTAS = cuentas && cuentas.length > 0 ? cuentas : DEFAULT_CUENTAS;
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState("");

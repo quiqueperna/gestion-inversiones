@@ -2,6 +2,28 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v13
+
+### Errores encontrados y corregidos
+
+**Error 1 — CashFlowForm tenía cuentas hardcodeadas**
+- Causa: `const CUENTAS = ["USA", "Argentina", "CRYPTO"]` definido como constante de módulo. Las cuentas creadas vía CRUD de Cuentas se guardaban en `memoryState.cuentas` pero `CashFlowForm` nunca las leía.
+- Señal: usuario reportó que cuentas nuevas no aparecían en el combo al abrir la pantalla Nuevo Depósito.
+- Corrección: agregar prop `cuentas?: string[]` con fallback a `DEFAULT_CUENTAS`. Pasarla desde `page.tsx` con `cuentas={cuentas.map(c => c.nombre)}`.
+- Regla: **ningún select de entidades del dominio (cuentas, brokers, instrumentos) debe tener opciones hardcodeadas. Siempre recibir los datos como prop desde el componente padre que tiene el estado global.**
+
+### Sin otros errores
+
+Ambos cambios fueron simples y TypeScript + lint pasaron en el primer intento.
+
+### Aprendizajes de la sesión
+
+1. **Los selects dinámicos requieren propagación explícita de estado**: `page.tsx` ya tenía `cuentas` en estado (cargadas vía `getMemoryCuentas`), pero ese estado no llegaba a `CashFlowForm`. El patrón correcto es siempre pasarlo como prop, no hardcodear opciones en el componente hijo.
+
+2. **Revisar todos los formularios periódicamente**: el mismo problema de hardcoding podría existir en otros formularios (TradeForm, editDraft en movimientos). Conviene auditarlos para garantizar que usen datos del estado global.
+
+---
+
 ## 22 de Marzo, 2026 — Sesión v11
 
 ### Errores encontrados y corregidos
