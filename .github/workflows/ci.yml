@@ -24,19 +24,34 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          POSTGRES_PRISMA_URL: ${{ secrets.POSTGRES_PRISMA_URL || 'postgresql://mock:mock@localhost:6543/mock?pgbouncer=true&connection_limit=1' }}
+          POSTGRES_URL_NON_POOLING: ${{ secrets.POSTGRES_URL_NON_POOLING || 'postgresql://mock:mock@localhost:5432/mock' }}
+
       - name: Lint
         run: npm run lint
 
       - name: Type check
         run: npm run typecheck
+        env:
+          POSTGRES_PRISMA_URL: ${{ secrets.POSTGRES_PRISMA_URL || 'postgresql://mock:mock@localhost:6543/mock?pgbouncer=true&connection_limit=1' }}
+          POSTGRES_URL_NON_POOLING: ${{ secrets.POSTGRES_URL_NON_POOLING || 'postgresql://mock:mock@localhost:5432/mock' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key' }}
 
       - name: Unit tests
         run: npm run test
+        # Los tests unitarios usan in-memory data-loader, no requieren conexión DB
 
       - name: Build
         run: npm run build
         env:
-          DATABASE_URL: "file:./dev.db"
+          POSTGRES_PRISMA_URL: ${{ secrets.POSTGRES_PRISMA_URL || 'postgresql://mock:mock@localhost:6543/mock?pgbouncer=true&connection_limit=1' }}
+          POSTGRES_URL_NON_POOLING: ${{ secrets.POSTGRES_URL_NON_POOLING || 'postgresql://mock:mock@localhost:5432/mock' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key' }}
 
   e2e:
     name: E2E Tests
@@ -49,13 +64,24 @@ jobs:
           node-version: '22'
           cache: 'npm'
       - run: npm ci
+      - name: Generate Prisma Client
+        run: npx prisma generate
+        env:
+          POSTGRES_PRISMA_URL: ${{ secrets.POSTGRES_PRISMA_URL || 'postgresql://mock:mock@localhost:6543/mock?pgbouncer=true&connection_limit=1' }}
+          POSTGRES_URL_NON_POOLING: ${{ secrets.POSTGRES_URL_NON_POOLING || 'postgresql://mock:mock@localhost:5432/mock' }}
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium
       - name: Build
         run: npm run build
         env:
-          DATABASE_URL: "file:./dev.db"
+          POSTGRES_PRISMA_URL: ${{ secrets.POSTGRES_PRISMA_URL || 'postgresql://mock:mock@localhost:6543/mock?pgbouncer=true&connection_limit=1' }}
+          POSTGRES_URL_NON_POOLING: ${{ secrets.POSTGRES_URL_NON_POOLING || 'postgresql://mock:mock@localhost:5432/mock' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key' }}
       - name: Run E2E
         run: npm run test:e2e
         env:
-          DATABASE_URL: "file:./dev.db"
+          POSTGRES_PRISMA_URL: ${{ secrets.POSTGRES_PRISMA_URL || 'postgresql://mock:mock@localhost:6543/mock?pgbouncer=true&connection_limit=1' }}
+          POSTGRES_URL_NON_POOLING: ${{ secrets.POSTGRES_URL_NON_POOLING || 'postgresql://mock:mock@localhost:5432/mock' }}
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL || 'https://mock.supabase.co' }}
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'mock-anon-key' }}

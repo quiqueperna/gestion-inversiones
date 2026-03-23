@@ -2,6 +2,32 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v15
+
+### Errores encontrados y corregidos
+
+**Error 1 — Seeds legacy con modelos obsoletos (`operation`, `trade`) rompían el typecheck**
+- Causa: `prisma/seed-complete.ts` y `prisma/seed-csv.ts` referenciaban los modelos `Operation` y `Trade` del schema viejo. En el refactor v10 esos modelos pasaron a `Execution` y `TradeUnit`, pero los seeds nunca se actualizaron.
+- Señal: `npx tsc --noEmit` reportó 10 errores en esos dos archivos.
+- Corrección: excluir los seeds del tsconfig (`"exclude": [..., "prisma/seed-complete.ts", "prisma/seed-csv.ts"]`). Los seeds son scripts de carga one-time, no forman parte del código de producción.
+- Regla: **los scripts de seed/migration son infraestructura, no producción. Excluirlos del tsconfig estricto si referencian modelos legacy que ya no existen en el schema.**
+
+**Error 2 — `prisma generate` fallaba por DLL bloqueada en Windows**
+- Causa: Windows bloquea la DLL del query engine de Prisma cuando hay un proceso Node.js activo usando ese cliente.
+- Señal: `EPERM: operation not permitted, rename ... query_engine-windows.dll.node.tmp`
+- Solución: el `npm install` ejecutado durante el paso anterior ya regeneró el cliente vía `postinstall`. La regeneración manual no era necesaria.
+- Regla: **en Windows, si `prisma generate` falla con EPERM, verificar si npm install (que corre postinstall) ya generó el cliente correctamente antes de intentar otra regeneración.**
+
+### Aprendizajes de la sesión
+
+1. **El patrón de Supabase SSR requiere exactamente dos archivos de utils**: `server.ts` (cookies de Next.js) y `client.ts` (browser). El middleware actúa como tercer pilar que refresca la sesión. Los tres son independientes pero complementarios.
+
+2. **El connection pooler de Supabase resuelve el problema de Serverless con Prisma**: en Vercel cada Lambda puede instanciar un PrismaClient nuevo. Sin pooler, cada Lambda abriría una conexión directa a PostgreSQL, agotando el límite rápidamente. Con el pooler en puerto 6543 modo Transaction, las conexiones se comparten.
+
+3. **`directUrl` en schema.prisma es obligatorio para migraciones**: `prisma migrate deploy` no puede usar el pooler (que no soporta DDL). Necesita la URL directa al puerto 5432. Sin `directUrl` las migraciones fallarían en producción.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v14
 
 ### Errores encontrados y corregidos
