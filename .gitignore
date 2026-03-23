@@ -13,6 +13,9 @@
 # production
 /build
 
+# ambiente local
+/local
+
 # misc
 .DS_Store
 *.pem

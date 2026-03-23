@@ -31,10 +31,10 @@ interface TradeFormProps {
   openPositions?: OpenExecution[];
   onClosePosition?: (openOpId: number, quantity?: number, price?: number, date?: string) => Promise<void>;
   getOpenExecutionsForClosing?: (symbol: string, side: 'BUY' | 'SELL', account: string, broker: string) => Promise<any[]>;
-  cuentas?: Array<{ id: number; nombre: string; matchingStrategy?: string }>;
+  accounts?: Array<{ id: number; nombre: string; matchingStrategy?: string }>;
 }
 
-export default function TradeForm({ onClose, onSave, initialData, inline = false, openTradeUnits = [], onCloseExecution, getOpenExecutionsForClosing, cuentas }: TradeFormProps) {
+export default function TradeForm({ onClose, onSave, initialData, inline = false, openTradeUnits = [], onCloseExecution, getOpenExecutionsForClosing, accounts }: TradeFormProps) {
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pendingClose, setPendingClose] = useState<{
@@ -72,9 +72,9 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
 
   // Derive strategy from selected account
   const accountStrategy = useMemo(() => {
-    const cuenta = cuentas?.find(c => c.nombre === watchedAccount);
-    return (cuenta?.matchingStrategy as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL') ?? 'FIFO';
-  }, [cuentas, watchedAccount]);
+    const acc = accounts?.find(c => c.nombre === watchedAccount);
+    return (acc?.matchingStrategy as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL') ?? 'FIFO';
+  }, [accounts, watchedAccount]);
   const isManualStrategy = accountStrategy === 'MANUAL';
 
   // Open Trade Units that match symbol / account / broker (opposite side), sorted newest first
@@ -239,8 +239,8 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Cuenta</label>
                   <select {...register("account")}
                     className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all appearance-none">
-                    {cuentas && cuentas.length > 0
-                      ? cuentas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
+                    {accounts && accounts.length > 0
+                      ? accounts.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
                       : (
                         <>
                           <option value="USA">USA</option>

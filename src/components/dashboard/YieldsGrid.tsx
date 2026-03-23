@@ -22,22 +22,22 @@ interface YieldTotals {
 
 interface YieldsGridProps {
     title: string;
-    cuentas: string[];
+    accounts: string[];
     rows: YieldRow[];
     totals: YieldTotals;
-    selectedCuentas?: string[];
+    selectedAccounts?: string[];
 }
 
-export default function YieldsGrid({ title, cuentas, rows, totals, selectedCuentas }: YieldsGridProps) {
-  const filteredCuentas = selectedCuentas && selectedCuentas.length > 0
-    ? cuentas.filter(c => selectedCuentas.includes(c))
-    : cuentas;
-  const displayColumns = [...filteredCuentas, 'TOTAL'];
+export default function YieldsGrid({ title, accounts, rows, totals, selectedAccounts }: YieldsGridProps) {
+  const filteredAccounts = selectedAccounts && selectedAccounts.length > 0
+    ? accounts.filter(c => selectedAccounts.includes(c))
+    : accounts;
+  const displayColumns = [...filteredAccounts, 'TOTAL'];
   const displayRows = [...rows].reverse();
 
-  // Recompute per-row totals dynamically based on visible cuentas
+  // Recompute per-row totals dynamically based on visible accounts
   const getRowTotal = (row: YieldRow): YieldCell => {
-    return filteredCuentas.reduce((acc, col) => {
+    return filteredAccounts.reduce((acc, col) => {
       const d = (row[col] as YieldCell | undefined) || { balance: 0, pl: 0, pct: 0, ie: 0 };
       return { balance: acc.balance + d.balance, pl: acc.pl + d.pl, pct: 0, ie: acc.ie + d.ie };
     }, { balance: 0, pl: 0, pct: 0, ie: 0 } as YieldCell);
@@ -45,7 +45,7 @@ export default function YieldsGrid({ title, cuentas, rows, totals, selectedCuent
 
   const recomputedTotals: Record<string, { balance: number; pl: number; ie: number }> = {
     ...totals,
-    TOTAL: filteredCuentas.reduce((acc, col) => {
+    TOTAL: filteredAccounts.reduce((acc, col) => {
       const d = totals[col] || { balance: 0, pl: 0, ie: 0 };
       return { balance: acc.balance + d.balance, pl: acc.pl + d.pl, ie: acc.ie + d.ie };
     }, { balance: 0, pl: 0, ie: 0 }),

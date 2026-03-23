@@ -25,13 +25,13 @@ import DataTable, { ColumnDef } from "@/components/ui/DataTable";
 import CloseTradeModal from "@/components/trades/CloseTradeModal";
 import CashFlowForm from "@/components/cashflow/CashFlowForm";
 import ViewDetailModal from "@/components/ui/ViewDetailModal";
-import CuentasSection from "@/components/cuentas/CuentasSection";
+import AccountsSection from "@/components/cuentas/AccountsSection";
 import BrokersSection from "@/components/brokers/BrokersSection";
 
 // Server Actions
 import { getYieldsData as getYields, getStats, getDashboardSummary, getTopStats, getEquityCurve } from "@/server/actions/dashboard";
 import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing } from "@/server/actions/trades";
-import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryCuentas, addMemoryCuenta, removeMemoryCuenta, updateMemoryCuenta, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker, updateCuentaMatchingStrategy } from "@/server/actions/transactions";
+import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryAccounts, addMemoryAccount, removeMemoryAccount, updateMemoryAccount, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker, updateAccountMatchingStrategy } from "@/server/actions/transactions";
 import TradeForm from "@/components/trades/TradeForm";
 import DropdownMultiCheck from "@/components/ui/DropdownMultiCheck";
 import { exportToCSV, downloadCSV } from "@/lib/csv-exporter";
@@ -64,7 +64,7 @@ export default function Home() {
   const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
   const [brokerFilters, setBrokerFilters] = useState<string[]>([]);
   const [instrumentFilters, setInstrumentFilters] = useState<string[]>([]);
-  const [cuentaFilters, setCuentaFilters] = useState<string[]>([]);
+  const [accountFilters, setAccountFilters] = useState<string[]>([]);
   const [selectedCalendarMonths, setSelectedCalendarMonths] = useState<string[]>([]);
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [openPage, setOpenPage] = useState(1);
@@ -84,9 +84,9 @@ export default function Home() {
   // Modal/Edit State
   const [editingExecution, setEditingExecution] = useState<any>(null);
   const [viewingItem, setViewingItem] = useState<{ type: 'operation' | 'trade'; data: any } | null>(null);
-  const [cuentas, setCuentas] = useState<any[]>([]);
+  const [accounts, setAccounts] = useState<any[]>([]);
   const [brokers, setBrokers] = useState<any[]>([]);
-  const [selectedCuentas, setSelectedCuentas] = useState<string[]>([]);
+  const [selectedAccounts, setSelectedAccounts] = useState<string[]>([]);
 
   // Data State
   const [stats, setStats] = useState<any>(null);
@@ -95,7 +95,7 @@ export default function Home() {
   const [tradeUnits, setTradeUnits] = useState<any[]>([]);
   const [cashFlows, setCashFlows] = useState<any[]>([]);
   const [editingCfId, setEditingCfId] = useState<number | null>(null);
-  const [editDraft, setEditDraft] = useState<{ date: string; type: 'DEPOSIT' | 'WITHDRAWAL'; amount: string; broker: string; cuenta: string; description: string } | null>(null);
+  const [editDraft, setEditDraft] = useState<{ date: string; type: 'DEPOSIT' | 'WITHDRAWAL'; amount: string; broker: string; account: string; description: string } | null>(null);
   const [summary, setSummary] = useState<any>(null);
   const [topStats, setTopStats] = useState<any>(null);
   const [equityCurve, setEquityCurve] = useState<{ date: string; equity: number; trade: string }[]>([]);
@@ -119,14 +119,14 @@ export default function Home() {
   const fetchData = async (isInitial = false) => {
     if (isInitial) setLoading(true); else setRefreshing(true);
     try {
-      const [execs, tus, st, yld, summ, top, cuentasList, brokersList, cfs] = await Promise.all([
+      const [execs, tus, st, yld, summ, top, accountsList, brokersList, cfs] = await Promise.all([
         getExecutions(),
         getTradeUnits(),
         getStats(activeInterval.start, activeInterval.end),
         getYields(year),
         getDashboardSummary(activeInterval.start, activeInterval.end),
         getTopStats(activeInterval.start, activeInterval.end),
-        getMemoryCuentas(),
+        getMemoryAccounts(),
         getMemoryBrokers(),
         getMemoryCashFlows(),
       ]);
@@ -136,7 +136,7 @@ export default function Home() {
       setYields(yld);
       setSummary(summ);
       setTopStats(top);
-      setCuentas(cuentasList);
+      setAccounts(accountsList);
       setBrokers(brokersList);
       setCashFlows(cfs);
 
@@ -161,11 +161,11 @@ export default function Home() {
 
   useEffect(() => { setOpenPage(1); }, [searchQuery]);
 
-  // Load selectedCuentas from localStorage (SSR-safe)
+  // Load selectedAccounts from localStorage (SSR-safe)
   useEffect(() => {
     const saved = localStorage.getItem('gemini-capital-selected-cuentas');
     if (saved) {
-      try { setSelectedCuentas(JSON.parse(saved)); } catch { /* ignore */ }
+      try { setSelectedAccounts(JSON.parse(saved)); } catch { /* ignore */ }
     }
   }, []);
 
@@ -287,7 +287,7 @@ export default function Home() {
     return Object.entries(groups).map(([label, value]) => ({ label, value, color: colors[label] || '#6b7280' }));
   }, [tradeUnits]);
 
-  const pieByCuenta = useMemo(() => {
+  const pieByAccount = useMemo(() => {
     const groups: Record<string, number> = {};
     tradeUnits.filter((t: any) => t.status === 'OPEN').forEach((t: any) => {
       const key = t.account || 'USA';
@@ -391,7 +391,7 @@ export default function Home() {
   };
 
   const handleSaveCashFlow = async (data: {
-    date: string; amount: number; type: "DEPOSIT" | "WITHDRAWAL"; broker: string; cuenta: string; description?: string;
+    date: string; amount: number; type: "DEPOSIT" | "WITHDRAWAL"; broker: string; account: string; description?: string;
   }) => {
     await addMemoryCashFlow(data);
     setCashFlows(await getMemoryCashFlows());
@@ -406,7 +406,7 @@ export default function Home() {
       type: row.type,
       amount: String(Math.abs(row.amount)),
       broker: row.broker || '',
-      cuenta: row.cuenta || 'USA',
+      account: row.account || 'USA',
       description: row.description || '',
     });
   };
@@ -425,7 +425,7 @@ export default function Home() {
       amount: Math.abs(amt),
       type: editDraft.type,
       broker: editDraft.broker,
-      cuenta: editDraft.cuenta,
+      account: editDraft.account,
       description: editDraft.description || undefined,
     });
     setCashFlows(await getMemoryCashFlows());
@@ -512,7 +512,7 @@ export default function Home() {
 
       if (view === 'transactions') {
         if (brokerFilters.length > 0 && !brokerFilters.includes(item.broker)) return false;
-        if (cuentaFilters.length > 0 && !cuentaFilters.includes(item.account)) return false;
+        if (accountFilters.length > 0 && !accountFilters.includes(item.account)) return false;
       }
 
       if (view === 'trade-units') {
@@ -535,7 +535,7 @@ export default function Home() {
     }
 
     return list;
-  }, [executions, tradeUnits, view, activeInterval, searchQuery, brokerFilters, cuentaFilters, instrumentFilters, tuStatusFilter, tuViewMode]);
+  }, [executions, tradeUnits, view, activeInterval, searchQuery, brokerFilters, accountFilters, instrumentFilters, tuStatusFilter, tuViewMode]);
 
   // Trade Units grouped view
   const tradeUnitsGrouped = useMemo(() => {
@@ -616,7 +616,7 @@ export default function Home() {
           const term = searchQuery.toLowerCase();
           if (
             !cf.broker?.toLowerCase().includes(term) &&
-            !cf.cuenta?.toLowerCase().includes(term) &&
+            !cf.account?.toLowerCase().includes(term) &&
             !cf.description?.toLowerCase().includes(term)
           ) return false;
         }
@@ -668,7 +668,7 @@ export default function Home() {
     { key: "type", header: "Tipo", align: "center", render: (v) => <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider", v === "DEPOSIT" ? "bg-emerald-900/50 text-emerald-400" : "bg-red-900/50 text-red-400")}>{v === "DEPOSIT" ? "▲ Depósito" : "▼ Retiro"}</span> },
     { key: "amount", header: "Monto", align: "right", sortable: true, render: (v, row) => <span className={cn("font-mono font-semibold tabular-nums", row.type === "DEPOSIT" ? "text-emerald-400" : "text-red-400")}>{row.type === "DEPOSIT" ? "+" : "-"}${Math.abs(Number(v)).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> },
     { key: "broker", header: "Broker", align: "center", sortable: true },
-    { key: "cuenta", header: "Cuenta", align: "center", sortable: true, render: (v) => v ? String(v) : <span className="text-zinc-600">—</span> },
+    { key: "account", header: "Cuenta", align: "center", sortable: true, render: (v) => v ? String(v) : <span className="text-zinc-600">—</span> },
     { key: "description", header: "Descripción", render: (v) => v ? String(v) : <span className="text-zinc-600">—</span> },
   ];
 
@@ -784,13 +784,13 @@ export default function Home() {
             hideSearch={view === "dashboard"}
             extraFilters={
               <div className="ml-auto flex items-center gap-3 flex-wrap">
-                {view === "dashboard" && cuentas.length > 0 && (
+                {view === "dashboard" && accounts.length > 0 && (
                   <DropdownMultiCheck
                     label="Cuenta"
-                    options={cuentas.map((c: any) => c.nombre)}
-                    selected={selectedCuentas}
+                    options={accounts.map((c: any) => c.nombre)}
+                    selected={selectedAccounts}
                     onChange={(next) => {
-                      setSelectedCuentas(next);
+                      setSelectedAccounts(next);
                       localStorage.setItem('gemini-capital-selected-cuentas', JSON.stringify(next));
                     }}
                     allLabel="Todas"
@@ -887,20 +887,20 @@ export default function Home() {
                     <YieldsGrid
                       key={grp.year}
                       title={String(grp.year)}
-                      cuentas={grp.cuentas || []}
+                      accounts={grp.accounts || []}
                       rows={grp.rows}
                       totals={grp.totals}
-                      selectedCuentas={selectedCuentas}
+                      selectedAccounts={selectedAccounts}
                     />
                   ))}
                 </div>
               ) : (
                 <YieldsGrid
                   title={year ? String(year) : "Rendimientos"}
-                  cuentas={yields.cuentas || []}
+                  accounts={yields.accounts || []}
                   rows={yields.rows}
                   totals={yields.totals}
-                  selectedCuentas={selectedCuentas}
+                  selectedAccounts={selectedAccounts}
                 />
               )}
             </div>
@@ -1084,16 +1084,16 @@ export default function Home() {
               </div>
             )}
             {/* Gráficos de Torta */}
-            {(pieByInstrument.length > 0 || pieByCuenta.length > 0 || pieByBroker.length > 0) && (
+            {(pieByInstrument.length > 0 || pieByAccount.length > 0 || pieByBroker.length > 0) && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {pieByInstrument.length > 0 && (
                   <div className="bg-zinc-900/50 rounded-2xl border border-white/5 p-6">
                     <PieChartComponent data={pieByInstrument} title="Tenencia por Tipo de Activo" size={120} />
                   </div>
                 )}
-                {pieByCuenta.length > 0 && (
+                {pieByAccount.length > 0 && (
                   <div className="bg-zinc-900/50 rounded-2xl border border-white/5 p-6">
-                    <PieChartComponent data={pieByCuenta} title="Tenencia por Cuenta" size={120} />
+                    <PieChartComponent data={pieByAccount} title="Tenencia por Cuenta" size={120} />
                   </div>
                 )}
                 {pieByBroker.length > 0 && (
@@ -1121,9 +1121,9 @@ export default function Home() {
                 />
                 <DropdownMultiCheck
                   label="Cuenta"
-                  options={cuentas.map((c: any) => c.nombre)}
-                  selected={cuentaFilters}
-                  onChange={setCuentaFilters}
+                  options={accounts.map((c: any) => c.nombre)}
+                  selected={accountFilters}
+                  onChange={setAccountFilters}
                   allLabel="Todas"
                 />
               </div>
@@ -1353,7 +1353,7 @@ export default function Home() {
               inline
               onClose={() => { setEditingExecution(null); navigateBack(); }}
               onSave={handleSaveExecution}
-              cuentas={cuentas}
+              accounts={accounts}
               onCloseExecution={async (entryExecId, qty, price, date, account, broker) => {
                 await closeTradeUnitWithQuantity({
                   symbol: executions.find((e: any) => e.id === entryExecId)?.symbol || '',
@@ -1393,7 +1393,7 @@ export default function Home() {
               inline
               onClose={() => navigateBack()}
               onSave={handleSaveCashFlow}
-              cuentas={cuentas.map((c: any) => c.nombre)}
+              accounts={accounts.map((c: any) => c.nombre)}
             />
           </div>
         )}
@@ -1458,10 +1458,10 @@ export default function Home() {
                 </td>
                 {/* Cuenta */}
                 <td className="py-1 px-3 text-center">
-                  <select value={editDraft.cuenta} onChange={e => setEditDraft({ ...editDraft, cuenta: e.target.value })}
+                  <select value={editDraft.account} onChange={e => setEditDraft({ ...editDraft, account: e.target.value })}
                     className={inputCls}>
-                    {cuentas.length > 0
-                      ? cuentas.map((c: any) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
+                    {accounts.length > 0
+                      ? accounts.map((c: any) => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
                       : ["USA","Argentina","CRYPTO"].map(c => <option key={c}>{c}</option>)
                     }
                   </select>
@@ -1519,7 +1519,7 @@ export default function Home() {
                     { key: 'type', header: 'Tipo' },
                     { key: 'amount', header: 'Monto' },
                     { key: 'broker', header: 'Broker' },
-                    { key: 'cuenta', header: 'Cuenta' },
+                    { key: 'account', header: 'Cuenta' },
                     { key: 'description', header: 'Descripción' },
                   ]);
                   downloadCSV(csv, `movimientos-${new Date().toISOString().split('T')[0]}.csv`);
@@ -1533,19 +1533,19 @@ export default function Home() {
         {/* --- CUENTAS VIEW --- */}
         {view === "cuentas" && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <CuentasSection
-              cuentas={cuentas}
+            <AccountsSection
+              accounts={accounts}
               onAdd={async (nombre, descripcion) => {
-                await addMemoryCuenta(nombre, descripcion);
-                setCuentas(await getMemoryCuentas());
+                await addMemoryAccount(nombre, descripcion);
+                setAccounts(await getMemoryAccounts());
               }}
               onRemove={async (id) => {
-                await removeMemoryCuenta(id);
-                setCuentas(await getMemoryCuentas());
+                await removeMemoryAccount(id);
+                setAccounts(await getMemoryAccounts());
               }}
               onEdit={async (id, nombre, descripcion) => {
-                await updateMemoryCuenta(id, nombre, descripcion);
-                setCuentas(await getMemoryCuentas());
+                await updateMemoryAccount(id, nombre, descripcion);
+                setAccounts(await getMemoryAccounts());
               }}
             />
           </div>
@@ -1624,21 +1624,21 @@ export default function Home() {
                   <div className="space-y-3">
                     <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Estrategia de Matching por Cuenta</p>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {cuentas.map((cuenta: any) => (
-                        <div key={cuenta.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
+                      {accounts.map((acc: any) => (
+                        <div key={acc.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
                           <div>
-                            <p className="text-[13px] font-black text-zinc-200">{cuenta.nombre}</p>
-                            {cuenta.descripcion && <p className="text-[11px] text-zinc-500 mt-0.5">{cuenta.descripcion}</p>}
+                            <p className="text-[13px] font-black text-zinc-200">{acc.nombre}</p>
+                            {acc.descripcion && <p className="text-[11px] text-zinc-500 mt-0.5">{acc.descripcion}</p>}
                           </div>
                           <div className="space-y-2">
                             <select
-                              value={cuenta.matchingStrategy ?? 'FIFO'}
+                              value={acc.matchingStrategy ?? 'FIFO'}
                               onChange={async (e) => {
                                 const strategy = e.target.value as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
-                                await updateCuentaMatchingStrategy(cuenta.id, strategy);
-                                setCuentas(await getMemoryCuentas());
-                                setConfigSaved(prev => ({ ...prev, [cuenta.id]: true }));
-                                setTimeout(() => setConfigSaved(prev => ({ ...prev, [cuenta.id]: false })), 2000);
+                                await updateAccountMatchingStrategy(acc.id, strategy);
+                                setAccounts(await getMemoryAccounts());
+                                setConfigSaved(prev => ({ ...prev, [acc.id]: true }));
+                                setTimeout(() => setConfigSaved(prev => ({ ...prev, [acc.id]: false })), 2000);
                               }}
                               className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-[12px] text-zinc-200 outline-none focus:border-blue-500 transition-colors appearance-none"
                             >
@@ -1648,18 +1648,18 @@ export default function Home() {
                               <option value="MIN_PROFIT">Mínimo Profit — Menor ganancia primero</option>
                               <option value="MANUAL">Manual — Selección manual</option>
                             </select>
-                            {configSaved[cuenta.id] && (
+                            {configSaved[acc.id] && (
                               <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
                                 <Check className="w-3.5 h-3.5" />
                                 <span>Guardado</span>
                               </div>
                             )}
                             <p className="text-[10px] text-zinc-600">
-                              {(cuenta.matchingStrategy ?? 'FIFO') === 'FIFO' && 'Las posiciones se cierran comenzando por las más antiguas (First In, First Out).'}
-                              {(cuenta.matchingStrategy ?? 'FIFO') === 'LIFO' && 'Las posiciones se cierran comenzando por las más recientes (Last In, First Out).'}
-                              {(cuenta.matchingStrategy ?? 'FIFO') === 'MAX_PROFIT' && 'Las posiciones con mayor ganancia potencial se cierran primero.'}
-                              {(cuenta.matchingStrategy ?? 'FIFO') === 'MIN_PROFIT' && 'Las posiciones con menor ganancia potencial (o mayor pérdida) se cierran primero.'}
-                              {(cuenta.matchingStrategy ?? 'FIFO') === 'MANUAL' && 'El usuario selecciona manualmente qué posición cerrar en cada operación.'}
+                              {(acc.matchingStrategy ?? 'FIFO') === 'FIFO' && 'Las posiciones se cierran comenzando por las más antiguas (First In, First Out).'}
+                              {(acc.matchingStrategy ?? 'FIFO') === 'LIFO' && 'Las posiciones se cierran comenzando por las más recientes (Last In, First Out).'}
+                              {(acc.matchingStrategy ?? 'FIFO') === 'MAX_PROFIT' && 'Las posiciones con mayor ganancia potencial se cierran primero.'}
+                              {(acc.matchingStrategy ?? 'FIFO') === 'MIN_PROFIT' && 'Las posiciones con menor ganancia potencial (o mayor pérdida) se cierran primero.'}
+                              {(acc.matchingStrategy ?? 'FIFO') === 'MANUAL' && 'El usuario selecciona manualmente qué posición cerrar en cada operación.'}
                             </p>
                           </div>
                         </div>

@@ -10,24 +10,24 @@ interface CashFlowFormProps {
     amount: number;
     type: "DEPOSIT" | "WITHDRAWAL";
     broker: string;
-    cuenta: string;
+    account: string;
     description?: string;
   }) => Promise<void>;
   inline?: boolean;
-  cuentas?: string[];
+  accounts?: string[];
 }
 
 const BROKERS = ["Schwab", "Binance", "Cocos", "Balanz", "AMR", "IOL", "IBKR", "PP"];
-const DEFAULT_CUENTAS = ["USA", "Argentina", "CRYPTO"];
+const DEFAULT_ACCOUNTS = ["USA", "Argentina", "CRYPTO"];
 
-export default function CashFlowForm({ onClose, onSave, inline = false, cuentas }: CashFlowFormProps) {
-  const CUENTAS = cuentas && cuentas.length > 0 ? cuentas : DEFAULT_CUENTAS;
+export default function CashFlowForm({ onClose, onSave, inline = false, accounts }: CashFlowFormProps) {
+  const ACCOUNTS = accounts && accounts.length > 0 ? accounts : DEFAULT_ACCOUNTS;
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"DEPOSIT" | "WITHDRAWAL">("DEPOSIT");
   const [broker, setBroker] = useState("AMR");
-  const [cuenta, setCuenta] = useState("USA");
+  const [account, setAccount] = useState("USA");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -37,7 +37,7 @@ export default function CashFlowForm({ onClose, onSave, inline = false, cuentas 
     if (!amt || amt <= 0) return;
     setLoading(true);
     try {
-      await onSave({ date, amount: amt, type, broker, cuenta, description: description || undefined });
+      await onSave({ date, amount: amt, type, broker, account, description: description || undefined });
       onClose();
     } finally {
       setLoading(false);
@@ -97,9 +97,9 @@ export default function CashFlowForm({ onClose, onSave, inline = false, cuentas 
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Cuenta</label>
-              <select value={cuenta} onChange={e => setCuenta(e.target.value)}
+              <select value={account} onChange={e => setAccount(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-lg text-[13px] outline-none focus:border-blue-500 text-zinc-200 appearance-none">
-                {CUENTAS.map(c => <option key={c} value={c}>{c}</option>)}
+                {ACCOUNTS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>

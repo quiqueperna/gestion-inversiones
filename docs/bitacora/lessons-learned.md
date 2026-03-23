@@ -2,6 +2,60 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v18
+
+### Sin errores de lógica
+
+La sesión fue limpia. El rename `Cuenta`→`Account` requirió cambios en 10+ archivos pero siguió un patrón sistemático sin ambigüedades.
+
+**Punto clave:** En un rename de entidad de esta escala, hay que cubrir **4 capas en orden**: (1) interfaz/tipo TypeScript, (2) estado en memoria, (3) server actions (imports + db calls + función names), (4) UI (state + props + componentes). Saltarse el orden genera errores en cascada difíciles de rastrear.
+
+**Observación:** La columna `cuenta` en `CashFlow` también fue parte del rename (ahora `account`). Sin el context de LASTED.md hubiera sido fácil omitirlo.
+
+---
+
+## 23 de Marzo, 2026 — Sesión v17
+
+### Errores encontrados y corregidos
+
+**Error 1 — `ensureLoaded()` CSV poisonaba el flag `isDBBacked`**
+- Causa: `transactions.ts` tenía su propio `ensureLoaded()` síncrono que llamaba a `initializeMemoryState()` (CSV) → setea `isDBBacked=false`. Si cualquier función de transactions.ts (`getMemoryCuentas`, `getMemoryBrokers`, etc.) era invocada antes que trades.ts o dashboard.ts, el memoryState quedaba marcado como no-DB y NINGUNA mutación posterior escribía a la base de datos.
+- Señal: datos desaparecían al recargar la página a pesar de que el código de persistencia parecía correcto.
+- Corrección: reemplazar `ensureLoaded()` por versión `async` que carga desde DB (idéntica a las otras acciones). Ahora todas las `ensureDataLoaded`/`ensureLoaded` son consistentes.
+- Regla: **en proyectos con múltiples archivos de server actions que comparten el mismo módulo de estado (memoryState), TODAS las funciones de inicialización deben usar la misma estrategia de carga. Un solo punto de inicialización inconsistente puede envenenar el estado global.**
+
+**Error 2 — Brokers y Cuentas sin modelo en Prisma**
+- Causa: en la sesión v16 se agregó persistencia pero se olvidó crear tablas para `Broker` y `Cuenta`. Solo existían en el hardcoded de `initializeFromDB()`.
+- Señal: usuario reporta que brokers y cuentas no se persisten.
+- Corrección: agregar modelos `Broker` y `Cuenta` al schema, migrar, seedear defaults, y extender `initializeFromDB()` para aceptarlos como parámetros opcionales.
+- Regla: **cuando se activa persistencia, verificar que TODAS las entidades editables desde la UI tengan su tabla en la BD. No basta con persistir las entidades "principales" si hay entidades de configuración (brokers, cuentas) también editables.**
+
+---
+
+## 23 de Marzo, 2026 — Sesión v16
+
+### Errores encontrados y corregidos
+
+**Error 1 — Tests fallaban al agregar persistencia DB en mutaciones**
+- Causa: Los tests de `trades.test.ts` usan `initializeMemoryState` (desde CSV) con IDs sintéticos (1, 2...). Al agregar `db.execution.create(id: 1)` en `createExecution`, el DB ya tenía ese ID del seed → violación de `UNIQUE constraint`.
+- Señal: 7/42 tests fallaron con `PrismaClientKnownRequestError: Unique constraint failed on id`.
+- Corrección: agregar flag `isDBBacked: boolean` al memoryState. Solo se persiste a DB cuando `isDBBacked = true` (carga desde Prisma). Los tests usan `initializeMemoryState` que setea `isDBBacked = false`, aislando completamente la BD.
+- Regla: **cualquier mutation que escribe a DB debe verificar `state.isDBBacked` antes de ejecutar el query. Esto permite que tests unitarios trabajen con estado en memoria sin tocar la BD real.**
+
+**Error 2 — `replace_all` con indentación incorrecta no reemplazó todas las ocurrencias**
+- Causa: Usé 4 espacios en el patrón pero el código tenía 2 espacios en algunas funciones de dashboard.ts.
+- Señal: TypeScript errores `Property 'tradeUnits' does not exist on type 'Promise<...>'` — el `await` no había sido insertado.
+- Corrección: hacer replace_all con el patrón de 2 espacios por separado.
+- Regla: **cuando se hace replace_all para agregar `await`, verificar con Grep primero qué indentaciones existen en el archivo para no perder ocurrencias.**
+
+**Error 3 — Tipo incorrecto para array de Prisma transactions**
+- Causa: Usé `Parameters<typeof db.$transaction>[0]` como tipo para el array de operaciones DB acumuladas, pero eso resuelve al tipo función (primer overload interactivo), no al array de PrismaPromises.
+- Señal: TypeScript error `Type 'never[]' is not assignable to type '(prisma: ...) => Promise'`.
+- Corrección: cambiar a `Promise<unknown>[]` y usar `Promise.all()` en lugar de `db.$transaction()`.
+- Regla: **en Prisma, para batch de operaciones en memoria acumuladas, usar `Promise<unknown>[]` + `Promise.all()`. Reservar `db.$transaction()` con array solo cuando el tipo puede inferirse estáticamente.**
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v15
 
 ### Errores encontrados y corregidos

@@ -12,24 +12,26 @@ datasource db {
 }
 
 model Execution {
-  id           Int      @id @default(autoincrement())
-  date         DateTime
-  symbol       String
-  qty          Float
-  price        Float
-  amount       Float
-  broker       String   @default("AMR")
-  account      String   @default("USA")
-  side         String   // BUY, SELL
-  isClosed     Boolean  @default(false)
-  remainingQty Float    @default(0)
-  currency     String   @default("USD")
-  commissions  Float    @default(0)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  date          DateTime
+  symbol        String
+  qty           Float
+  price         Float
+  amount        Float
+  broker        String   @default("AMR")
+  account       String   @default("USA")
+  side          String   // BUY, SELL
+  isClosed      Boolean  @default(false)
+  remainingQty  Float    @default(0)
+  currency      String   @default("USD")
+  commissions   Float    @default(0)
+  exchange_rate Float    @default(1)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   // Relaciones con TradeUnits
   entryTradeUnits  TradeUnit[] @relation("EntryExecution")
+  exitTradeUnits   TradeUnit[] @relation("ExitExecution")
 
   @@index([symbol])
   @@index([date])
@@ -42,12 +44,30 @@ model CashFlow {
   amount      Float
   type        String   // DEPOSIT, WITHDRAWAL
   broker      String
+  account     String?
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   @@index([date])
   @@index([broker])
+}
+
+model Account {
+  id               Int      @id @default(autoincrement())
+  nombre           String   @unique
+  descripcion      String?
+  matchingStrategy String   @default("FIFO")
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Broker {
+  id          Int      @id @default(autoincrement())
+  nombre      String   @unique
+  descripcion String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }
 
 model TradeUnit {
@@ -72,6 +92,8 @@ model TradeUnit {
 
   entryExecId  Int?
   entryExec    Execution? @relation("EntryExecution", fields: [entryExecId], references: [id])
+  exitExecId   Int?
+  exitExec     Execution? @relation("ExitExecution", fields: [exitExecId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

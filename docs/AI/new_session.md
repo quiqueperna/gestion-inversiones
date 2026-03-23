@@ -24,7 +24,7 @@ Lee de forma paralela estos archivos:
 
 No pidas permiso para ejecutar npm run lint, tsc o vitest. Hazlo automáticamente después de cada cambio y    corrige los errores por tu cuenta antes de responder.
 
-## Version Actual: 15
+## Version Actual: 18
 
 ## Archivo versionado 
 

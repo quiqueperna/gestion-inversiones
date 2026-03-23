@@ -4,16 +4,29 @@
 import fs from 'fs';
 import path from 'path';
 import { eachMonthOfInterval, isSameMonth } from "date-fns";
-import { getMemoryState, initializeMemoryState, TradeUnit } from "@/lib/data-loader";
+import { getMemoryState, initializeMemoryState, initializeFromDB, TradeUnit } from "@/lib/data-loader";
 import { getInstrumentType } from "@/lib/utils";
+import { db } from "@/server/db";
 
-// Helper to ensure data is loaded
-function ensureDataLoaded() {
+// Helper to ensure data is loaded (from DB if available, otherwise CSV)
+async function ensureDataLoaded() {
     const state = getMemoryState();
     if (!state.isInitialized) {
-        const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
-        const csvText = fs.readFileSync(csvPath, 'utf-8');
-        initializeMemoryState(csvText, true);
+        const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
+            db.execution.findMany({ orderBy: { date: 'asc' } }),
+            db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
+            db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
+            db.account.findMany(),
+            db.broker.findMany(),
+        ]);
+
+        if (dbExecutions.length > 0) {
+            initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers });
+        } else {
+            const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
+            const csvText = fs.readFileSync(csvPath, 'utf-8');
+            initializeMemoryState(csvText, true);
+        }
     }
     return getMemoryState();
 }
@@ -25,10 +38,10 @@ async function computeYearData(state: ReturnType<typeof getMemoryState>, year: n
     const tradeUnits = state.tradeUnits.filter(t => t.status === 'CLOSED' && t.exitDate && t.exitDate >= startOfYear && t.exitDate <= endOfYear);
     const cashFlows = state.cashFlows.filter(c => c.date >= startOfYear && c.date <= endOfYear);
 
-    const { getCuentas } = await import("@/lib/data-loader");
-    const cuentasFromState = getCuentas().map((c: any) => c.nombre);
-    const cuentasFromData = Array.from(new Set(tradeUnits.map(t => t.account || 'USA')));
-    const allCuentas = Array.from(new Set([...cuentasFromState, ...cuentasFromData]));
+    const { getAccounts } = await import("@/lib/data-loader");
+    const accountsFromState = getAccounts().map((c: any) => c.nombre);
+    const accountsFromData = Array.from(new Set(tradeUnits.map(t => t.account || 'USA')));
+    const allAccounts = Array.from(new Set([...accountsFromState, ...accountsFromData]));
 
     const months = eachMonthOfInterval({ start: startOfYear, end: endOfYear });
     const brokerMap: Record<string, string> = { 'IBKR': 'USA', 'Schwab': 'USA', 'IOL': 'Argentina', 'AMR': 'USA', 'Cocos': 'Argentina', 'Balanz': 'Argentina', 'Binance': 'CRYPTO' };
@@ -38,15 +51,15 @@ async function computeYearData(state: ReturnType<typeof getMemoryState>, year: n
         const rowData: any = { month: MESES_ES[monthDate.getMonth()] };
         let totalBalance = 0, totalPL = 0, totalIE = 0;
 
-        allCuentas.forEach(cuenta => {
-            const cTrades = tradeUnits.filter(t => (t.account || 'USA') === cuenta && t.exitDate && isSameMonth(t.exitDate, monthDate));
-            const cFlows = cashFlows.filter(c => (brokerMap[c.broker] || 'USA') === cuenta && isSameMonth(c.date, monthDate));
+        allAccounts.forEach(accountName => {
+            const cTrades = tradeUnits.filter(t => (t.account || 'USA') === accountName && t.exitDate && isSameMonth(t.exitDate, monthDate));
+            const cFlows = cashFlows.filter(c => (brokerMap[c.broker] || 'USA') === accountName && isSameMonth(c.date, monthDate));
 
             const balance = cTrades.reduce((sum, t) => sum + t.entryAmount, 0);
             const pl = cTrades.reduce((sum, t) => sum + t.pnlNominal, 0);
             const ie = cFlows.reduce((sum, c) => sum + (c.type === 'DEPOSIT' ? c.amount : -c.amount), 0);
 
-            rowData[cuenta] = { balance, pl, pct: balance > 0 ? (pl / balance) * 100 : 0, ie, count: cTrades.length };
+            rowData[accountName] = { balance, pl, pct: balance > 0 ? (pl / balance) * 100 : 0, ie, count: cTrades.length };
             totalBalance += balance; totalPL += pl; totalIE += ie;
         });
 
@@ -55,33 +68,33 @@ async function computeYearData(state: ReturnType<typeof getMemoryState>, year: n
     });
 
     const totals: any = { month: "TOTAL" };
-    [...allCuentas, 'TOTAL'].forEach(key => {
+    [...allAccounts, 'TOTAL'].forEach(key => {
         const colBalance = rows.reduce((sum, r) => sum + (r[key]?.balance || 0), 0);
         const colPL = rows.reduce((sum, r) => sum + (r[key]?.pl || 0), 0);
         const colIE = rows.reduce((sum, r) => sum + (r[key]?.ie || 0), 0);
         totals[key] = { balance: colBalance, pl: colPL, ie: colIE };
     });
 
-    return { cuentas: allCuentas as string[], rows, totals };
+    return { accounts: allAccounts as string[], rows, totals };
 }
 
 export async function getYieldsData(year?: number | null) {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
 
     if (!year) {
         // All years: find distinct years from closed tradeUnits, sort descending
         const closedTUs = state.tradeUnits.filter(t => t.status === 'CLOSED' && t.exitDate);
         const years = [...new Set(closedTUs.map(t => t.exitDate!.getFullYear()))].sort((a, b) => b - a);
-        if (years.length === 0) return { cuentas: [], rows: [], totals: {}, yearGroups: [] };
+        if (years.length === 0) return { accounts: [], rows: [], totals: {}, yearGroups: [] };
         const groups = await Promise.all(years.map(async y => ({ year: y, ...(await computeYearData(state, y)) })));
-        return { cuentas: groups[0].cuentas, rows: [], totals: {}, yearGroups: groups };
+        return { accounts: groups[0].accounts, rows: [], totals: {}, yearGroups: groups };
     }
 
     return computeYearData(state, year);
 }
 
 export async function getStats(startDate: Date, endDate: Date) {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
     const tradeUnits = state.tradeUnits
         .filter(t => t.status === 'CLOSED' && t.exitDate && t.exitDate >= startDate && t.exitDate <= endDate)
         .sort((a, b) => a.exitDate!.getTime() - b.exitDate!.getTime());
@@ -164,7 +177,7 @@ function createEmptyStats() {
 }
 
 export async function getTopStats(startDate?: Date, endDate?: Date) {
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
   const closedTUs = state.tradeUnits.filter((t: TradeUnit) => {
     if (t.status !== 'CLOSED' || !t.exitDate) return false;
     if (startDate && endDate) return t.exitDate >= startDate && t.exitDate <= endDate;
@@ -187,7 +200,7 @@ export async function getTopStats(startDate?: Date, endDate?: Date) {
 }
 
 export async function getDashboardSummary(startDate?: Date, endDate?: Date) {
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
   const allTUs = state.tradeUnits;
   const openTUs = allTUs.filter((t: TradeUnit) => t.status === 'OPEN');
   const closedTUs = allTUs.filter((t: TradeUnit) => {
@@ -215,7 +228,7 @@ export async function getDashboardSummary(startDate?: Date, endDate?: Date) {
 }
 
 export async function getEquityCurve(): Promise<{ date: string; equity: number; trade: string }[]> {
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
   const sorted = [...state.tradeUnits]
     .filter(t => t.status === 'CLOSED' && t.exitDate)
     .sort((a, b) => new Date(a.exitDate!).getTime() - new Date(b.exitDate!).getTime());

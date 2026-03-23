@@ -3,27 +3,40 @@
 
 import fs from 'fs';
 import path from 'path';
-import { getMemoryState, initializeMemoryState, TradeUnit, Execution, updateCuentaStrategy } from "@/lib/data-loader";
+import { getMemoryState, initializeMemoryState, initializeFromDB, TradeUnit, Execution, updateAccountStrategy } from "@/lib/data-loader";
 import { getCurrentPriceWithFallback } from "@/lib/prices";
+import { db } from "@/server/db";
 
 // Helper to ensure data is loaded in the server instance
-function ensureDataLoaded() {
+async function ensureDataLoaded() {
     const state = getMemoryState();
     if (!state.isInitialized) {
-        const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
-        const csvText = fs.readFileSync(csvPath, 'utf-8');
-        initializeMemoryState(csvText, true);
+        const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
+            db.execution.findMany({ orderBy: { date: 'asc' } }),
+            db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
+            db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
+            db.account.findMany(),
+            db.broker.findMany(),
+        ]);
+
+        if (dbExecutions.length > 0) {
+            initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers });
+        } else {
+            const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
+            const csvText = fs.readFileSync(csvPath, 'utf-8');
+            initializeMemoryState(csvText, true);
+        }
     }
     return getMemoryState();
 }
 
 export async function getExecutions() {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
     return state.executions;
 }
 
 export async function getTradeUnits() {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
 
     const openTUs = state.tradeUnits.filter(t => t.status === 'OPEN');
     if (openTUs.length === 0) return state.tradeUnits;
@@ -57,9 +70,10 @@ export async function getTradeUnits() {
 }
 
 export async function createExecution(data: any) {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
+    const maxId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
     const newExec: Execution = {
-        id: state.executions.length + 1,
+        id: maxId + 1,
         date: new Date(data.date + 'T12:00:00'),
         symbol: data.symbol,
         qty: data.qty ?? data.quantity,
@@ -76,21 +90,44 @@ export async function createExecution(data: any) {
     };
 
     state.executions.push(newExec);
+
+    // Persist to DB only when state was loaded from DB (not from CSV/tests)
+    if (state.isDBBacked) await db.execution.create({
+        data: {
+            id: newExec.id,
+            date: newExec.date,
+            symbol: newExec.symbol,
+            qty: newExec.qty,
+            price: newExec.price,
+            amount: newExec.amount,
+            broker: newExec.broker,
+            account: newExec.account,
+            side: newExec.side,
+            isClosed: newExec.isClosed,
+            remainingQty: newExec.remainingQty,
+            currency: newExec.currency,
+            commissions: newExec.commissions,
+            exchange_rate: newExec.exchange_rate,
+        },
+    });
+
     return newExec;
 }
 
 export async function deleteExecution(id: number): Promise<boolean> {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
     const exists = state.executions.some(o => o.id === id);
     if (!exists) return false;
     state.executions = state.executions.filter(o => o.id !== id);
+    // Persist to DB only when state was loaded from DB
+    if (state.isDBBacked) await db.execution.delete({ where: { id } });
     return true;
 }
 
 export async function getOpenExecutionsForClosing(symbol: string, side: 'BUY' | 'SELL', account: string, broker: string) {
   // Para cerrar una SELL, buscamos BUYs abiertas. Para cerrar una BUY, buscamos SELLs.
   const oppositeSide = side === 'SELL' ? 'BUY' : 'SELL';
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
   return state.executions.filter(exec =>
     exec.symbol === symbol.toUpperCase() &&
     exec.side === oppositeSide &&
@@ -121,7 +158,7 @@ export async function closeTradeUnitManually(data: {
   account: string;
   entryExecId: number;
 }) {
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
 
   const openExec = state.executions.find(exec => exec.id === data.entryExecId);
   if (!openExec) throw new Error('Ejecución de apertura no encontrada');
@@ -210,6 +247,48 @@ export async function closeTradeUnitManually(data: {
     state.tradeUnits.push(resultTU);
   }
 
+  // Persist to DB only when state was loaded from DB
+  if (state.isDBBacked) await db.$transaction([
+    db.execution.create({
+      data: {
+        id: newCloseExec.id, date: newCloseExec.date, symbol: newCloseExec.symbol,
+        qty: newCloseExec.qty, price: newCloseExec.price, amount: newCloseExec.amount,
+        broker: newCloseExec.broker, account: newCloseExec.account, side: newCloseExec.side,
+        isClosed: newCloseExec.isClosed, remainingQty: newCloseExec.remainingQty,
+        currency: newCloseExec.currency, commissions: newCloseExec.commissions,
+        exchange_rate: newCloseExec.exchange_rate,
+      },
+    }),
+    db.execution.update({
+      where: { id: openExec.id },
+      data: { remainingQty: openExec.remainingQty, isClosed: openExec.isClosed },
+    }),
+    ...(existingOpenTU
+      ? [db.tradeUnit.update({
+          where: { id: resultTU.id },
+          data: {
+            exitDate: resultTU.exitDate, exitPrice: resultTU.exitPrice,
+            exitAmount: resultTU.exitAmount, days: resultTU.days,
+            pnlNominal: resultTU.pnlNominal, pnlPercent: resultTU.pnlPercent,
+            tna: resultTU.tna, status: resultTU.status,
+            exitExecId: resultTU.exitExecId ?? null,
+          },
+        })]
+      : [db.tradeUnit.create({
+          data: {
+            symbol: resultTU.symbol, qty: resultTU.qty, entryDate: resultTU.entryDate,
+            exitDate: resultTU.exitDate, entryPrice: resultTU.entryPrice,
+            exitPrice: resultTU.exitPrice, entryAmount: resultTU.entryAmount,
+            exitAmount: resultTU.exitAmount, days: resultTU.days,
+            pnlNominal: resultTU.pnlNominal, pnlPercent: resultTU.pnlPercent,
+            tna: resultTU.tna, broker: resultTU.broker, account: resultTU.account,
+            status: resultTU.status, side: resultTU.side,
+            entryExecId: resultTU.entryExecId ?? null,
+            exitExecId: resultTU.exitExecId ?? null,
+          },
+        })]),
+  ]);
+
   return resultTU;
 }
 
@@ -223,7 +302,7 @@ export async function closeTradeUnitWithQuantity(data: {
   primaryEntryExecId: number;
   strategy?: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
 }) {
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
   // Use actual current time for the close — preserves the user-entered date but stamps real HH:MM
   const now = new Date();
   const [y, m, d] = data.closeDate.split('-').map(Number);
@@ -245,8 +324,8 @@ export async function closeTradeUnitWithQuantity(data: {
   let resolvedStrategy = data.strategy;
   if (!resolvedStrategy) {
     const state2 = getMemoryState();
-    const cuenta = state2.cuentas.find(c => c.nombre === data.account);
-    resolvedStrategy = cuenta?.matchingStrategy ?? 'FIFO';
+    const accountConfig = state2.accounts.find(c => c.nombre === data.account);
+    resolvedStrategy = accountConfig?.matchingStrategy ?? 'FIFO';
   }
   const strategy = resolvedStrategy;
 
@@ -275,6 +354,9 @@ export async function closeTradeUnitWithQuantity(data: {
     allOpenExecs.unshift(primary);
   }
 
+  // Collect DB operations to run at the end
+  const dbOps: Promise<unknown>[] = [];
+
   for (const openExec of allOpenExecs) {
     if (remainingToClose <= 0.0001) break;
 
@@ -300,19 +382,37 @@ export async function closeTradeUnitWithQuantity(data: {
         exchange_rate: openExec.exchange_rate || 1,
       };
       state.executions.push(newOpenExec);
+      dbOps.push(db.execution.create({
+        data: {
+          id: newOpenExec.id, date: newOpenExec.date, symbol: newOpenExec.symbol,
+          qty: newOpenExec.qty, price: newOpenExec.price, amount: newOpenExec.amount,
+          broker: newOpenExec.broker, account: newOpenExec.account, side: newOpenExec.side,
+          isClosed: newOpenExec.isClosed, remainingQty: newOpenExec.remainingQty,
+          currency: newOpenExec.currency, commissions: newOpenExec.commissions,
+          exchange_rate: newOpenExec.exchange_rate,
+        },
+      }));
 
       // Redirect existing open trade unit to new exec
-      const existingOpenTU = state.tradeUnits.find(t => t.status === 'OPEN' && t.entryExecId === openExec.id);
-      if (existingOpenTU) {
-        existingOpenTU.entryExecId = newExecId;
-        existingOpenTU.qty = qtyRemainder;
-        existingOpenTU.entryAmount = openExec.price * qtyRemainder;
+      const existingOpenTUPartial = state.tradeUnits.find(t => t.status === 'OPEN' && t.entryExecId === openExec.id);
+      if (existingOpenTUPartial) {
+        existingOpenTUPartial.entryExecId = newExecId;
+        existingOpenTUPartial.qty = qtyRemainder;
+        existingOpenTUPartial.entryAmount = openExec.price * qtyRemainder;
+        dbOps.push(db.tradeUnit.update({
+          where: { id: existingOpenTUPartial.id },
+          data: { entryExecId: newExecId, qty: qtyRemainder, entryAmount: openExec.price * qtyRemainder },
+        }));
       }
     }
 
     // Mark original exec as fully closed
     openExec.remainingQty = 0;
     openExec.isClosed = true;
+    dbOps.push(db.execution.update({
+      where: { id: openExec.id },
+      data: { remainingQty: 0, isClosed: true },
+    }));
 
     // Create closing SELL execution record first (so we have its id for exitExecId)
     const closeExecId = Math.max(...state.executions.map(o => o.id)) + 1;
@@ -326,6 +426,16 @@ export async function closeTradeUnitWithQuantity(data: {
       exchange_rate: openExec.exchange_rate || 1,
     };
     state.executions.push(closeExec);
+    dbOps.push(db.execution.create({
+      data: {
+        id: closeExec.id, date: closeExec.date, symbol: closeExec.symbol,
+        qty: closeExec.qty, price: closeExec.price, amount: closeExec.amount,
+        broker: closeExec.broker, account: closeExec.account, side: closeExec.side,
+        isClosed: closeExec.isClosed, remainingQty: closeExec.remainingQty,
+        currency: closeExec.currency, commissions: closeExec.commissions,
+        exchange_rate: closeExec.exchange_rate,
+      },
+    }));
 
     // Update or create closed trade unit record
     const existingOpenTU = state.tradeUnits.find(t => t.status === 'OPEN' && t.entryExecId === openExec.id);
@@ -336,6 +446,14 @@ export async function closeTradeUnitWithQuantity(data: {
         pnlNominal, pnlPercent, tna, status: 'CLOSED' as const,
         exitExecId: closeExecId,
       });
+      dbOps.push(db.tradeUnit.update({
+        where: { id: existingOpenTU.id },
+        data: {
+          exitDate: closeDate, exitPrice: data.closePrice, exitAmount,
+          qty: qtyToClose, entryAmount, days, pnlNominal, pnlPercent, tna,
+          status: 'CLOSED', exitExecId: closeExecId,
+        },
+      }));
     } else {
       const newTUId = state.tradeUnits.length > 0 ? Math.max(...state.tradeUnits.map(t => t.id)) + 1 : 1;
       const newTU: TradeUnit = {
@@ -346,6 +464,17 @@ export async function closeTradeUnitWithQuantity(data: {
         status: 'CLOSED', entryExecId: openExec.id, exitExecId: closeExecId, side: 'BUY',
       };
       state.tradeUnits.push(newTU);
+      dbOps.push(db.tradeUnit.create({
+        data: {
+          symbol: newTU.symbol, qty: newTU.qty, entryDate: newTU.entryDate,
+          exitDate: newTU.exitDate, entryPrice: newTU.entryPrice, exitPrice: newTU.exitPrice,
+          entryAmount: newTU.entryAmount, exitAmount: newTU.exitAmount,
+          days: newTU.days, pnlNominal: newTU.pnlNominal, pnlPercent: newTU.pnlPercent,
+          tna: newTU.tna, broker: newTU.broker, account: newTU.account,
+          status: newTU.status, side: newTU.side,
+          entryExecId: newTU.entryExecId ?? null, exitExecId: newTU.exitExecId ?? null,
+        },
+      }));
     }
 
     remainingToClose -= qtyToClose;
@@ -364,16 +493,32 @@ export async function closeTradeUnitWithQuantity(data: {
       exchange_rate: 1,
     };
     state.executions.push(excessExec);
+    dbOps.push(db.execution.create({
+      data: {
+        id: excessExec.id, date: excessExec.date, symbol: excessExec.symbol,
+        qty: excessExec.qty, price: excessExec.price, amount: excessExec.amount,
+        broker: excessExec.broker, account: excessExec.account, side: excessExec.side,
+        isClosed: excessExec.isClosed, remainingQty: excessExec.remainingQty,
+        currency: excessExec.currency, commissions: excessExec.commissions,
+        exchange_rate: excessExec.exchange_rate,
+      },
+    }));
+  }
+
+  // Persist all DB operations (only when state was loaded from DB)
+  if (state.isDBBacked && dbOps.length > 0) {
+    await Promise.all(dbOps);
   }
 
   return { success: true };
 }
 
 export async function deleteTradeUnit(id: number): Promise<boolean> {
-    const state = ensureDataLoaded();
+    const state = await ensureDataLoaded();
     const idx = state.tradeUnits.findIndex(t => t.id === id);
     if (idx === -1) return false;
     state.tradeUnits.splice(idx, 1);
+    if (state.isDBBacked) await db.tradeUnit.delete({ where: { id } });
     return true;
 }
 
@@ -387,20 +532,25 @@ export async function updateExecution(id: number, data: Partial<{
   currency: string;
   commissions: number;
 }>): Promise<boolean> {
-  const state = ensureDataLoaded();
+  const state = await ensureDataLoaded();
   const exec = state.executions.find(o => o.id === id);
   if (!exec) return false;
-  Object.assign(exec, {
-    ...data,
-    amount: (data.qty !== undefined && data.price !== undefined)
-      ? Math.abs(data.qty * data.price)
-      : ((data.qty !== undefined) ? Math.abs(data.qty * exec.price) :
-         (data.price !== undefined) ? Math.abs(exec.qty * data.price) : exec.amount),
-  });
+  const newAmount = (data.qty !== undefined && data.price !== undefined)
+    ? Math.abs(data.qty * data.price)
+    : ((data.qty !== undefined) ? Math.abs(data.qty * exec.price) :
+       (data.price !== undefined) ? Math.abs(exec.qty * data.price) : exec.amount);
+  Object.assign(exec, { ...data, amount: newAmount });
+  // Persist to DB only when state was loaded from DB
+  if (state.isDBBacked) {
+    await db.execution.update({
+      where: { id },
+      data: { ...data, amount: newAmount },
+    });
+  }
   return true;
 }
 
-export { updateCuentaStrategy };
+export { updateAccountStrategy };
 
 // Cambio 3: Transaction aliases (primary new names)
 export const getTransactions = getExecutions;

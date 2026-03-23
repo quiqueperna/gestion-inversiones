@@ -3,14 +3,14 @@ import { useState } from "react";
 import { Trash2, Plus, Pencil, Check, X } from "lucide-react";
 import { Account } from "@/lib/data-loader";
 
-interface CuentasSectionProps {
-  cuentas: Account[];
+interface AccountsSectionProps {
+  accounts: Account[];
   onAdd: (nombre: string, descripcion?: string) => Promise<void>;
   onRemove: (id: number) => Promise<void>;
   onEdit: (id: number, nombre: string, descripcion?: string) => Promise<void>;
 }
 
-export default function CuentasSection({ cuentas, onAdd, onRemove, onEdit }: CuentasSectionProps) {
+export default function AccountsSection({ accounts, onAdd, onRemove, onEdit }: AccountsSectionProps) {
   const [nombre, setNombre] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [saving, setSaving] = useState(false);
@@ -55,7 +55,7 @@ export default function CuentasSection({ cuentas, onAdd, onRemove, onEdit }: Cue
             </tr>
           </thead>
           <tbody className="divide-y divide-white/5 text-[13px]">
-            {cuentas.map(c => (
+            {accounts.map(c => (
               <tr key={c.id} className="hover:bg-white/[0.03] transition-colors h-9">
                 <td className="py-1 px-4 text-zinc-600 text-[11px]">#{c.id}</td>
                 <td className="py-1 px-4 font-bold text-zinc-200">

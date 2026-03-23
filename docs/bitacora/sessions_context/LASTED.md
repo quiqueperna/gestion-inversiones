@@ -1,5 +1,157 @@
 # Contexto de Sesión - Gestión de Inversiones
-<!-- LEER PRIMERO: el bloque más reciente (v11, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+<!-- LEER PRIMERO: el bloque más reciente (v18, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+
+---
+
+## 23 de Marzo, 2026 — Estado actual tras sesión v18 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** Supabase local → todas las entidades persisten en BD
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+
+### Modelo de persistencia (completo)
+| Entidad | Tabla DB | Persiste |
+|---|---|---|
+| Execution | `Execution` | ✅ create/delete/update |
+| TradeUnit | `TradeUnit` | ✅ delete/close |
+| CashFlow | `CashFlow` | ✅ create/delete/update |
+| Account | `Account` | ✅ create/delete/update/strategy |
+| Broker | `Broker` | ✅ create/delete/update |
+
+### Cambio principal v18
+Rename completo `Cuenta` → `Account` en toda la codebase:
+- Tabla DB: `Cuenta` → `Account`; columna `CashFlow.cuenta` → `CashFlow.account`
+- Interface TypeScript: `Cuenta` → `Account`
+- Funciones: `getCuentas`→`getAccounts`, `addCuenta`→`addAccount`, etc.
+- State en page.tsx: `cuentas`→`accounts`, `selectedCuentas`→`selectedAccounts`
+- Componente: `AccountsSection.tsx` (reemplaza `CuentasSection.tsx`)
+- Props en YieldsGrid, CashFlowForm, TradeForm actualizadas
+
+### Para arrancar una nueva sesión
+```bash
+supabase start   # si Supabase local no está activo
+taskkill /IM node.exe /F  # Windows
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Brokers en CashFlowForm** — selects hardcodeados — P2
+2. **Sidebar lateral** — P3
+
+---
+
+## 23 de Marzo, 2026 — Estado actual tras sesión v17 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** Supabase local → todas las entidades persisten en BD
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Cuenta, Broker
+
+### Modelo de persistencia (completo)
+| Entidad | Tabla DB | Persiste |
+|---|---|---|
+| Execution | `Execution` | ✅ create/delete/update |
+| TradeUnit | `TradeUnit` | ✅ delete/close |
+| CashFlow | `CashFlow` | ✅ create/delete/update |
+| Cuenta | `Cuenta` | ✅ create/delete/update/strategy |
+| Broker | `Broker` | ✅ create/delete/update |
+
+### Fix crítico v17
+Todas las funciones `ensureDataLoaded`/`ensureLoaded` usan la misma estrategia: DB first, CSV fallback. Garantiza `isDBBacked=true` en todas las server actions.
+
+### Para arrancar una nueva sesión
+```bash
+supabase start   # si Supabase local no está activo
+taskkill /IM node.exe /F  # Windows
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Brokers en CashFlowForm** — selects hardcodeados — P2
+2. **Sidebar lateral** — P3
+
+---
+
+## 23 de Marzo, 2026 — Estado actual tras sesión v16 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** Supabase local (PostgreSQL, puerto 54322) → `initializeFromDB()` → `memoryState`
+- **Prisma:** activo para todas las entidades (Execution, TradeUnit, CashFlow)
+- **Tests:** Vitest (42 unitarios + integración)
+
+### Modelo de persistencia actual
+```
+Supabase/Prisma (fuente de verdad en disco)
+    ↓ al iniciar (primer request)
+initializeFromDB() → memoryState { executions, tradeUnits, cashFlows }
+    ↓ en cada mutación (isDBBacked=true)
+db.execution.create/update/delete + db.tradeUnit.* + db.cashFlow.*
+```
+
+**Flag `isDBBacked`:**
+- `true` cuando `initializeFromDB()` fue llamado → mutaciones persisten a DB
+- `false` cuando `initializeMemoryState()` (CSV) fue llamado → sin escritura a DB (tests)
+
+### BD local — datos actuales
+| Tabla | Registros |
+|---|---|
+| `Execution` | 341 (338 CSV + 3 mock posiciones abiertas) |
+| `TradeUnit` | 201 (198 cerrados FIFO + 3 abiertos mock) |
+| `CashFlow` | 9 (3 brokers × 3 movimientos) |
+
+### Qué funciona hoy
+Todo lo de v15 + persistencia real en Supabase.
+
+| Feature | Estado |
+|---|---|
+| Carga desde DB al iniciar (con fallback a CSV) | ✅ |
+| createExecution → persiste en DB | ✅ |
+| deleteExecution → persiste en DB | ✅ |
+| updateExecution → persiste en DB | ✅ |
+| closeTradeUnitManually → persiste en DB | ✅ |
+| closeTradeUnitWithQuantity → persiste en DB | ✅ |
+| deleteTradeUnit → persiste en DB | ✅ |
+| addMemoryCashFlow → persiste en DB | ✅ |
+| removeMemoryCashFlow → persiste en DB | ✅ |
+| updateMemoryCashFlow → persiste en DB | ✅ |
+| TypeScript 0 errores | ✅ |
+| 42/42 tests | ✅ |
+| Build limpio | ✅ |
+
+### Archivos clave
+
+| Archivo | Rol |
+|---|---|
+| `src/lib/data-loader.ts` | `initializeFromDB()`, `isDBBacked` flag, memoryState |
+| `src/server/actions/trades.ts` | ensureDataLoaded async (DB first), mutations con DB persist |
+| `src/server/actions/dashboard.ts` | ensureDataLoaded async (DB first) |
+| `src/server/actions/transactions.ts` | CashFlow CRUD con Prisma + sync memoria |
+| `prisma/schema.prisma` | exchange_rate en Execution, cuenta en CashFlow, exitExecId en TradeUnit |
+| `prisma/seed-v16.ts` | Seed completo: CSV FIFO → DB |
+
+### Para arrancar una nueva sesión
+```bash
+# Asegurarse de que Supabase local está corriendo
+supabase start   # si no está activo
+
+# Matar servidores viejos (Windows)
+taskkill /IM node.exe /F
+
+npm run dev      # dev en :3000
+npx tsc --noEmit # 0 errores
+npm run test     # 42 tests
+```
+
+### Pendientes para próxima sesión
+Ver `bitacora/pendientes.md`. Top:
+1. **Brokers en CashFlowForm** — selects hardcodeados, debería usar `getMemoryBrokers()` — P2
+2. **Sidebar lateral** — reemplazar nav horizontal — P3
 
 ---
 

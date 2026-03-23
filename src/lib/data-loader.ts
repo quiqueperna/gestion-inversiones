@@ -45,7 +45,7 @@ export interface TradeUnit {
     side: 'BUY' | 'SELL';
 }
 
-export interface Cuenta {
+export interface Account {
     id: number;
     nombre: string;
     descripcion?: string;
@@ -64,7 +64,7 @@ export interface CashFlow {
     amount: number;
     type: 'DEPOSIT' | 'WITHDRAWAL';
     broker: string;
-    cuenta?: string;
+    account?: string;
     description?: string;
 }
 
@@ -74,9 +74,10 @@ let memoryState = {
     executions: [] as Execution[],
     tradeUnits: [] as TradeUnit[],
     cashFlows: [] as CashFlow[],
-    cuentas: [] as Cuenta[],
+    accounts: [] as Account[],
     brokers: [] as Broker[],
-    isInitialized: false
+    isInitialized: false,
+    isDBBacked: false, // true when loaded from Supabase/Prisma
 };
 
 // --- Initialization Logic (CSV + Mock Data) ---
@@ -244,7 +245,7 @@ export function initializeMemoryState(csvText: string, includeMockData = false) 
         executions,
         tradeUnits,
         cashFlows,
-        cuentas: [
+        accounts: [
             { id: 1, nombre: 'USA', descripcion: 'Cuenta internacional', matchingStrategy: 'FIFO' as const },
             { id: 2, nombre: 'Argentina', descripcion: 'Cuenta local', matchingStrategy: 'FIFO' as const },
             { id: 3, nombre: 'CRYPTO', descripcion: 'Criptomonedas', matchingStrategy: 'FIFO' as const },
@@ -259,8 +260,101 @@ export function initializeMemoryState(csvText: string, includeMockData = false) 
             { id: 7, nombre: 'IBKR', descripcion: 'Interactive Brokers' },
             { id: 8, nombre: 'PP', descripcion: 'PPI Broker' },
         ],
-        isInitialized: true
+        isInitialized: true,
+        isDBBacked: false,
     };
+}
+
+export function initializeFromDB(data: {
+  executions: Array<{
+    id: number; date: Date; symbol: string; qty: number; price: number;
+    amount: number; broker: string; account: string; side: string;
+    isClosed: boolean; remainingQty: number; currency: string;
+    commissions: number; exchange_rate: number;
+  }>;
+  tradeUnits: Array<{
+    id: number; symbol: string; qty: number; entryDate: Date; exitDate: Date | null;
+    entryPrice: number; exitPrice: number | null; entryAmount: number;
+    exitAmount: number | null; days: number; pnlNominal: number; pnlPercent: number;
+    tna: number; broker: string; account: string; status: string; side: string;
+    entryExecId: number | null; exitExecId: number | null;
+  }>;
+  cashFlows: Array<{
+    id: number; date: Date; amount: number; type: string;
+    broker: string; account: string | null; description: string | null;
+  }>;
+  accounts?: Array<{ id: number; nombre: string; descripcion: string | null; matchingStrategy: string }>;
+  brokers?: Array<{ id: number; nombre: string; descripcion: string | null }>;
+}) {
+  if (memoryState.isInitialized) return;
+
+  const executions: Execution[] = data.executions.map((e) => ({
+    id: e.id, date: e.date, symbol: e.symbol, qty: e.qty, price: e.price,
+    amount: e.amount, broker: e.broker, account: e.account,
+    side: e.side as 'BUY' | 'SELL', isClosed: e.isClosed,
+    remainingQty: e.remainingQty, currency: e.currency,
+    commissions: e.commissions, exchange_rate: e.exchange_rate,
+  }));
+
+  const tradeUnits: TradeUnit[] = data.tradeUnits.map((t) => ({
+    id: t.id, symbol: t.symbol, qty: t.qty, entryDate: t.entryDate,
+    exitDate: t.exitDate ?? undefined, entryPrice: t.entryPrice,
+    exitPrice: t.exitPrice ?? undefined, entryAmount: t.entryAmount,
+    exitAmount: t.exitAmount ?? undefined, days: t.days,
+    pnlNominal: t.pnlNominal, pnlPercent: t.pnlPercent, tna: t.tna,
+    broker: t.broker, account: t.account,
+    status: t.status as 'OPEN' | 'CLOSED',
+    side: t.side as 'BUY' | 'SELL',
+    entryExecId: t.entryExecId ?? undefined,
+    exitExecId: t.exitExecId ?? undefined,
+  }));
+
+  const cashFlows: CashFlow[] = data.cashFlows.map((c) => ({
+    id: c.id, date: c.date, amount: c.amount,
+    type: c.type as 'DEPOSIT' | 'WITHDRAWAL',
+    broker: c.broker, account: c.account ?? undefined,
+    description: c.description ?? undefined,
+  }));
+
+  const defaultAccounts: Account[] = [
+    { id: 1, nombre: 'USA', descripcion: 'Cuenta internacional', matchingStrategy: 'FIFO' as const },
+    { id: 2, nombre: 'Argentina', descripcion: 'Cuenta local', matchingStrategy: 'FIFO' as const },
+    { id: 3, nombre: 'CRYPTO', descripcion: 'Criptomonedas', matchingStrategy: 'FIFO' as const },
+  ];
+
+  const defaultBrokers: Broker[] = [
+    { id: 1, nombre: 'Schwab', descripcion: 'Schwab USA' },
+    { id: 2, nombre: 'Binance', descripcion: 'Exchange de criptomonedas' },
+    { id: 3, nombre: 'Cocos', descripcion: 'Broker argentino' },
+    { id: 4, nombre: 'Balanz', descripcion: 'Broker argentino' },
+    { id: 5, nombre: 'AMR', descripcion: 'Broker' },
+    { id: 6, nombre: 'IOL', descripcion: 'InvertirOnLine' },
+    { id: 7, nombre: 'IBKR', descripcion: 'Interactive Brokers' },
+    { id: 8, nombre: 'PP', descripcion: 'PPI Broker' },
+  ];
+
+  memoryState = {
+    executions,
+    tradeUnits,
+    cashFlows,
+    accounts: data.accounts
+      ? data.accounts.map((c) => ({
+          id: c.id,
+          nombre: c.nombre,
+          descripcion: c.descripcion ?? undefined,
+          matchingStrategy: c.matchingStrategy as Account['matchingStrategy'],
+        }))
+      : defaultAccounts,
+    brokers: data.brokers
+      ? data.brokers.map((b) => ({
+          id: b.id,
+          nombre: b.nombre,
+          descripcion: b.descripcion ?? undefined,
+        }))
+      : defaultBrokers,
+    isInitialized: true,
+    isDBBacked: true,
+  };
 }
 
 export function getMemoryState() {
@@ -272,9 +366,10 @@ export function resetMemoryState() {
     executions: [] as Execution[],
     tradeUnits: [] as TradeUnit[],
     cashFlows: [] as CashFlow[],
-    cuentas: [] as Cuenta[],
+    accounts: [] as Account[],
     brokers: [] as Broker[],
     isInitialized: false,
+    isDBBacked: false,
   };
 }
 
@@ -304,40 +399,40 @@ export function updateCashFlow(id: number, data: Partial<Omit<CashFlow, 'id'>>):
   return true;
 }
 
-export function getCuentas(): Cuenta[] {
-    return memoryState.cuentas;
+export function getAccounts(): Account[] {
+    return memoryState.accounts;
 }
 
-export function addCuenta(nombre: string, descripcion?: string): Cuenta {
+export function addAccount(nombre: string, descripcion?: string): Account {
     const state = getMemoryState();
-    const newId = state.cuentas.length > 0 ? Math.max(...state.cuentas.map(c => c.id)) + 1 : 1;
-    const newCuenta: Cuenta = { id: newId, nombre, descripcion, matchingStrategy: 'FIFO' };
-    state.cuentas.push(newCuenta);
-    return newCuenta;
+    const newId = state.accounts.length > 0 ? Math.max(...state.accounts.map(c => c.id)) + 1 : 1;
+    const newAccount: Account = { id: newId, nombre, descripcion, matchingStrategy: 'FIFO' };
+    state.accounts.push(newAccount);
+    return newAccount;
 }
 
-export function updateCuenta(id: number, nombre: string, descripcion?: string): boolean {
+export function updateAccount(id: number, nombre: string, descripcion?: string): boolean {
     const state = getMemoryState();
-    const cuenta = state.cuentas.find(c => c.id === id);
-    if (!cuenta) return false;
-    cuenta.nombre = nombre;
-    cuenta.descripcion = descripcion;
+    const account = state.accounts.find(c => c.id === id);
+    if (!account) return false;
+    account.nombre = nombre;
+    account.descripcion = descripcion;
     return true;
 }
 
-export function removeCuenta(id: number): boolean {
+export function removeAccount(id: number): boolean {
     const state = getMemoryState();
-    const idx = state.cuentas.findIndex(c => c.id === id);
+    const idx = state.accounts.findIndex(c => c.id === id);
     if (idx === -1) return false;
-    state.cuentas.splice(idx, 1);
+    state.accounts.splice(idx, 1);
     return true;
 }
 
-export function updateCuentaStrategy(id: number, strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL'): boolean {
+export function updateAccountStrategy(id: number, strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL'): boolean {
     const state = getMemoryState();
-    const cuenta = state.cuentas.find(c => c.id === id);
-    if (!cuenta) return false;
-    cuenta.matchingStrategy = strategy;
+    const account = state.accounts.find(c => c.id === id);
+    if (!account) return false;
+    account.matchingStrategy = strategy;
     return true;
 }
 
