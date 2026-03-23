@@ -2,39 +2,49 @@ import { z } from "zod";
 
 export const operationTypeSchema = z.enum(["BUY", "SELL"]);
 
-export const operationSchema = z.object({
+export const transactionSchema = z.object({
   id: z.number().int().optional(),
   date: z.string().min(1, "La fecha es requerida"),
   symbol: z.string().min(1, "El símbolo es requerido").toUpperCase(),
-  quantity: z.number({ required_error: "La cantidad es requerida" }).positive("Debe ser positivo"),
+  qty: z.number({ required_error: "La cantidad es requerida" }).positive("Debe ser positivo"),
   price: z.number({ required_error: "El precio es requerido" }).positive("Debe ser positivo"),
   broker: z.string().min(1, "El broker es requerido").default("AMR"),
-  type: operationTypeSchema,
-  isFalopa: z.boolean().default(false),
-  isIntra: z.boolean().default(false),
+  account: z.string().default('USA'),
+  side: operationTypeSchema,
+  currency: z.string().default('USD'),
+  commissions: z.number().default(0),
+  exchange_rate: z.number().default(1),
 });
 
-export type OperationInput = z.infer<typeof operationSchema>;
+export type TransactionInput = z.infer<typeof transactionSchema>;
 
-// Schema para el formulario de nueva operación (campos de UI)
-export const newOperationFormSchema = z.object({
+// Schema para el formulario de nueva transacción (campos de UI)
+export const newTransactionFormSchema = z.object({
   symbol: z.string().min(1, "El símbolo es requerido"),
   entryDate: z.string().min(1, "La fecha de entrada es requerida"),
-  quantity: z.number({ required_error: "La cantidad es requerida" }).positive("Debe ser positivo"),
+  qty: z.number({ required_error: "La cantidad es requerida" }).positive("Debe ser positivo"),
   entryPrice: z.number({ required_error: "El precio es requerido" }).positive("Debe ser positivo"),
   broker: z.string().min(1, "El broker es requerido").default("AMR"),
-  cuenta: z.string().default('USA'),
-  type: z.enum(["BUY", "SELL"]).default("BUY"),
+  account: z.string().default('USA'),
+  side: z.enum(["BUY", "SELL"]).default("BUY"),
   isClosed: z.boolean().default(false),
-  isFalopa: z.boolean().default(false),
-  isIntra: z.boolean().default(false),
   exitPrice: z.number().positive().optional(),
   exitDate: z.string().optional(),
-  instrumentType: z.enum(["STOCK", "CEDEAR", "CRYPTO"]).default("STOCK"),
+  currency: z.string().default('USD'),
+  commissions: z.number().default(0),
+  exchange_rate: z.number().default(1),
 });
 
-export type NewOperationFormInput = z.infer<typeof newOperationFormSchema>;
+export type NewTransactionFormInput = z.infer<typeof newTransactionFormSchema>;
 
-// Kept for backward compatibility - alias to newOperationFormSchema
-export const tradeSchema = newOperationFormSchema;
-export type TradeInput = NewOperationFormInput;
+// Backward compat aliases
+export const operationSchema = transactionSchema;
+export type OperationInput = TransactionInput;
+export const executionSchema = transactionSchema;
+export type ExecutionInput = TransactionInput;
+export const tradeSchema = newTransactionFormSchema;
+export type TradeInput = NewTransactionFormInput;
+export const newExecutionFormSchema = newTransactionFormSchema;
+export type NewExecutionFormInput = NewTransactionFormInput;
+export const newOperationFormSchema = newTransactionFormSchema;
+export type NewOperationFormInput = NewTransactionFormInput;

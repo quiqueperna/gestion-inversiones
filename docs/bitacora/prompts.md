@@ -4,6 +4,43 @@ Registro cronológico de los prompts del usuario por sesión. Útil para reconst
 
 ---
 
+## 22 de Marzo, 2026 — Sesión v11
+
+### Prompt 1
+> "Pantalla Nueva Execucion - Hay un bug, en el set de prueba existen 2 compras de TSLA para AMR y USA. Una con cantidad 55 y otra 20. Al agregar una ejecucion de venta de tsla para esa cuenta y ese broker no me aparecen 2 item para cerrar cuando tengo cualqueira estrategia seleccionada que no sea Manual, cuando elijo manual si me aparece pero no muestra campos del trade units. Pantalla Trade Units - Combo 'Agrupar por' cambiar la funcionalidad: al clickear 'Todos' se deben seleccionar todas las opciones de agrupación al mismo tiempo. Quiero que haya una opcion 'Ninguno' que sea para no agrupar. Cuando no hay ninguna opcion seleccionada que es lo que antes llamaba 'Todos' y ahora deberia llamarse 'Ninguno' se debe ver el DataTable de siempre sin agrupar. Aplicar el mismo estilo que el DataTable a la vista agrupada: borde, fondo, encabezado con cantidad de registros mostrando la cantidad de grupos, las mismas opciones de paginacion de 25/50/100/todos. Deberia tener un encabezado igual al de los listados con REGISTROS en mayusculas."
+
+**Resultado:** Refactor de TradeForm para usar `openTradeUnits` prop. `matchingTUs` useMemo con filtros symbol/broker/account. `strategySortedTUs` para estrategias automáticas. Tabla MANUAL con campos de TU. DropdownMultiCheck con `allSelectsAll` y `noneLabel`. Vista agrupada con contenedor DataTable style y barra metadata.
+
+---
+
+### Prompt 2
+> "Pantalla Nueva Execucion - Hay un bug. Cuando elijo una estrategia que no es manual (ej FIFO) deberia aparecer arriba la lista de TU que matchearon (ya lo tenia antes) y ademas abajo deberia aparecer el preview de como quedarian esos TU si cierro esa operacion. El ID que se muestra al cerrar no es el ID del trade unit en el listado. Quitar las columnas A cerrar y PNL Est. del listado de Trades a cerrar. Al cerrar un trade manual la fecha y hora de salida no coinciden con la realidad. En los labels donde dice Trade Units debe decir solo Trades. Ordenar el listado de TU por fecha de entrada de forma descendente. El combo de Agrupar por, cuando hago click en Todos deben seleccionarse todas las opciones. Estado = Abiertos por default. Renombrar Abierta por Abiertos y Cerrada por Cerrados. En la vista agrupada, la lista, los numeros y textos deben ser gris, no blancos. No usar el signo de dólar, no usar el signo de +, no usar 'd' para los dias."
+
+**Resultado:** Fix ID mismatch (`pendingClose.tuId = tu.id`). Eliminadas columnas "A Cerrar"/"PNL Est." del MANUAL table. Fix timestamp real en `closeTradeUnitWithQuantity` y `closeTradeUnitManually`. Labels "Trades". Orden entryDate desc. `allSelectsAll` sin `noneLabel`. Default `tuStatusFilter = 'OPEN'`. Labels "Abiertos/Cerrados". Texto agrupada `text-zinc-400`. Sin "d"/sin "$"/sin "+".
+
+---
+
+### Prompt 3
+> "Pantalla Nueva Execucion - Mostrar el listado de la version anterior que decir 'Al guardar se cerrara este trade' donde muestra el listado y como se veria afectador los trades que se cerraran segun la estregia. Al cerrar un trade manual la fecha y hora de salida no coinciden con la realidad. Pantalla Trade - Combo 'Agrupar por' eliminar la opcion Ninguno. En la vista agrupada, la lista, los numeros y textos no tienen el mismo estilo que la vista sin agrupar. Unos son blancos y otros son grises. Deben ser todos grises. En la vista agrupar, en el listado donde aparecen las sub filas con los trade unit deben figurar las fecha de entrada y fechas de salida. En las sub filas agrandar un poco el tamaño de la letra"
+
+**Resultado:** Panel preview no-MANUAL restaurado con columnas ID, F.Entrada, Disponible, Cant. a Cerrar, P.Entrada, P.Salida, PNL Est. Fix timestamp real (segunda vez — había quedado a medias). Eliminada opción "Ninguno" del array de opciones. Sub-filas `text-[12px]`. Columnas F.ENTRADA/F.SALIDA agregadas a sub-filas.
+
+---
+
+### Prompt 4
+> "Los listados 'Trades que se cerrarán' y 'Al guardar, se cerrarán estos Trades' debe tener el formato de fecha 'dd/mm/aaaa'. Pantalla Trade - En la vista Desagrupar poner el mismo estilo de letras y color de los numeros y textos que la de la vista de 'Agrupar'. Unos son blancos y los otros grises. Que sean todos grises. Es la tercera vez que te lo digo y no lo cambias. En la vista agrupar, en el listado donde aparecen las sub filas con los trade unit las columnas fecha de entrada y fechas de salida debe verse luego de la columna de ID."
+
+**Resultado:** `import { format } from "date-fns"` en TradeForm. Todas las fechas en paneles usan `format(new Date(tu.entryDate), 'dd/MM/yyyy')`. `tradeUnitColumns` en page.tsx: todas las columnas con `render: (v) => <span className="text-zinc-400">...</span>`. Sub-filas: F.ENTRADA/F.SALIDA movidas a posición justo después de ID (actualizados thead + filas de grupo con "—" + sub-filas).
+
+---
+
+### Prompt 5
+> "Actualiza el archivo de funcionalidad.md con todo lo nuevo de esta sesión, y si borraste algo de funcionalidad también debes actualizarlo. Escribe los cambios en esta sesion por un lado, pero por otro manten el listado global de todas las funcionalidades. Escribe archivos dentro de /bitacora, uno que diga lo que hiciste, otro que diga lo que falta, otro que diga si tuviste errores y que aprendiste de ellos.otro con el contexto actual listo para una nueva session. Si ya estan creados añade el contenido tipo bitacora, con fecha y descripción, no borres el contenido anterior. Escribe un archivo en /bitacora/prompts tipo bitácora con todos los prompt que escribí en esta sesión"
+
+**Resultado:** Actualización de `docs/Funcionalidades.md` (sección v11 + actualización secciones 4 y 6 del listado global). Actualización de los 5 archivos de bitácora con bloques de sesión v11.
+
+---
+
 ## 21 de Marzo, 2026 — Sesión v9
 
 ### Prompt 1

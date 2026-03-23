@@ -2,6 +2,45 @@
 
 ---
 
+## 22 de Marzo, 2026 — Sesión v11
+
+### Errores encontrados y corregidos
+
+**Error 1 — Texto blanco en vista Desagrupar (3 veces reportado)**
+- Causa: `DataTable` renderiza `<td>` sin clase de color explícita. El tema oscuro hereda `text-white` en los `td`. Las columnas de `tradeUnitColumns` retornaban el valor como string sin `<span>`, con lo que el texto heredaba blanco.
+- Señal: el usuario lo reportó 3 veces en sesiones consecutivas. En las dos primeras veces se agregó la clase solo en algunos renders o se creía que estaba resuelta.
+- Corrección definitiva: agregar función `render: (v) => <span className="text-zinc-400">...</span>` a **TODAS** las columnas de `tradeUnitColumns`, sin excepción. Las columnas PNL mantienen sus colores semánticos.
+- Regla: **cuando un bug persiste después de dos correcciones, el problema no es donde se cree. Hacer grep de todas las instancias del patrón en el archivo antes de editar.**
+
+**Error 2 — `sed` dejó una línea sin reemplazar por diferencia de comillas**
+- Causa: el comando `sed` usó comillas simples en el patrón para buscar `toLocaleDateString('es-AR')`, pero había una instancia con comillas dobles `toLocaleDateString("es-AR")` que no matcheó.
+- Señal: después de correr sed, un `grep` encontró todavía la forma con comillas dobles en el archivo.
+- Corrección: usar la herramienta `Edit` directamente en lugar de `sed` para reemplazos de cadenas específicas. `sed` es sensible a comillas simples/dobles dentro del patrón.
+- Regla: **para reemplazos de strings en código, usar la herramienta Edit (con old_string/new_string) en lugar de sed. Edit es exacto, sed tiene problemas con quoting.**
+
+**Error 3 — ID incorrecto en panel de confirmación MANUAL**
+- Causa: al clicar "Cerrar" se guardaba `pendingClose.opId = tu.entryExecId`. En el panel de confirmación se mostraba `#{pendingClose.opId}`, que era el ID de la ejecución de entrada, no el ID del TradeUnit. El listado principal mostraba `#{tu.id}` — dos números distintos.
+- Corrección: agregar `tuId: number` al tipo de `pendingClose`; asignar `tuId: tu.id` al hacer clic; mostrar `pendingClose.tuId` en el panel.
+- Regla: **cuando hay dos IDs relacionados (TradeUnit.id vs Execution.id), nombrarlos explícitamente. No usar `opId` genérico que puede referirse a cualquiera de los dos.**
+
+**Error 4 — Columnas F.ENTRADA/F.SALIDA en sub-filas aparecían al final**
+- Causa: se agregaron al final de la definición del array de columnas y del JSX de sub-filas en lugar de insertarlas después del ID.
+- Señal: usuario reportó "deben verse luego de la columna de ID".
+- Corrección: reordenar simultáneamente la cabecera del thead, las celdas de las filas de grupo (con "—") y las celdas de las sub-filas. Los tres sitios deben estar en el mismo orden.
+- Regla: **cuando una tabla tiene cabecera + filas de grupo + sub-filas como 3 secciones separadas del JSX, un reorder de columnas requiere actualizar las 3 secciones. Buscar con grep antes de editar.**
+
+### Aprendizajes de la sesión
+
+1. **`strategySortedTUs` siempre visible vs. solo con closeQty**: la tabla de candidatos (todos los TUs) y el panel preview (solo los que se cerrarán) son dos cosas distintas. La tabla siempre se muestra para contexto; el panel solo cuando qty+price están ingresados. Esta separación evita confusión sobre qué pasará al guardar.
+
+2. **La hora de cierre importa para el usuario**: guardar `T12:00:00` como hora de cierre mostraba "12:00" en todos los cierres, independientemente de cuándo se hicieran. El fix `new Date(y, m-1, d, now.getH(), now.getM(), now.getS())` usa el timestamp real de la operación.
+
+3. **`allSelectsAll` en DropdownMultiCheck resuelve dos semánticas opuestas**: el componente originalmente tenía una sola semántica ("Todos" = nada seleccionado = mostrar todo). Para "Agrupar por" se necesita la inversa ("Todos" = todo seleccionado = todas las agrupaciones activas). El prop booleano evita duplicar el componente.
+
+4. **El contexto de sesión comprimido puede llevar a re-implementar cosas que ya estaban**: la conversación anterior fue comprimida. Al retomar, varios fixes ya estaban en el código pero el resumen no los describía con suficiente detalle. Leer el código actual antes de implementar cualquier fix ahorra trabajo duplicado.
+
+---
+
 ## 21 de Marzo, 2026 — Sesión v9
 
 ### Errores encontrados y corregidos

@@ -1,6 +1,6 @@
 "use client";
 import { X } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { cn, getInstrumentType } from "@/lib/utils";
 
 interface ViewDetailModalProps {
   type: 'operation' | 'trade';
@@ -30,7 +30,7 @@ export default function ViewDetailModal({ type, data, onClose }: ViewDetailModal
       <div className="bg-zinc-900 rounded-[8px] w-full max-w-md border border-white/10 shadow-2xl">
         <div className="p-4 border-b border-white/10 flex justify-between items-center">
           <h2 className="text-[11px] font-black uppercase tracking-widest text-zinc-400">
-            {isOp ? `Operación #${data.id}` : `Trade #${data.id}`}
+            {isOp ? `Transacción #${data.id}` : `Trade Unit #${data.id}`}
           </h2>
           <button onClick={onClose} className="text-zinc-500 hover:text-white transition-colors">
             <X className="w-4 h-4" />
@@ -42,12 +42,14 @@ export default function ViewDetailModal({ type, data, onClose }: ViewDetailModal
               <Row label="ID" value={String(data.id)} />
               <Row label="Fecha" value={fmtDate(data.date)} />
               <Row label="Símbolo" value={<span className="font-black text-white">{String(data.symbol)}</span>} />
-              <Row label="Tipo" value={<span className={data.type === 'BUY' ? 'text-emerald-400' : 'text-red-400'}>{String(data.type)}</span>} />
-              <Row label="Cantidad" value={String(data.quantity)} />
+              <Row label="Lado" value={<span className={data.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}>{String(data.side ?? data.type ?? '—')}</span>} />
+              <Row label="Cantidad" value={String(data.qty ?? data.quantity ?? '—')} />
               <Row label="Precio" value={fmtPrice(data.price)} />
               <Row label="Monto" value={fmtMoney(data.amount)} />
               <Row label="Broker" value={String(data.broker || '—')} />
-              <Row label="Cuenta" value={String(data.cuenta || '—')} />
+              <Row label="Cuenta" value={String(data.account ?? data.cuenta ?? '—')} />
+              <Row label="Moneda" value={String(data.currency || 'USD')} />
+              <Row label="Comisiones" value={data.commissions ? fmtPrice(data.commissions) : '—'} />
               <Row label="Falopa" value={data.isFalopa ? 'Sí' : 'No'} color={data.isFalopa ? 'text-orange-400' : 'text-zinc-500'} />
               <Row label="Intra" value={data.isIntra ? 'Sí' : 'No'} color={data.isIntra ? 'text-purple-400' : 'text-zinc-500'} />
               <Row label="Estado" value={data.isClosed ? 'Cerrada' : 'Abierta'} color={data.isClosed ? 'text-zinc-400' : 'text-blue-400'} />
@@ -56,21 +58,22 @@ export default function ViewDetailModal({ type, data, onClose }: ViewDetailModal
             <>
               <Row label="ID" value={String(data.id)} />
               <Row label="Símbolo" value={<span className="font-black text-white">{String(data.symbol)}</span>} />
-              <Row label="Estado" value={data.isClosed ? 'Cerrado' : 'Abierto'} color={data.isClosed ? 'text-zinc-400' : 'text-blue-400'} />
-              <Row label="F. Entrada" value={fmtDate(data.openDate)} />
-              <Row label="P. Entrada" value={fmtPrice(data.openPrice)} />
-              <Row label="M. Entrada" value={fmtMoney(data.openAmount)} />
-              <Row label="F. Salida" value={fmtDate(data.closeDate)} />
-              <Row label="P. Salida" value={fmtPrice(data.closePrice)} />
-              <Row label="M. Salida" value={fmtMoney(data.closeAmount)} />
-              <Row label="Cantidad" value={String(data.quantity)} />
+              <Row label="Estado" value={data.status === 'CLOSED' ? 'Cerrado' : 'Abierto'} color={data.status === 'CLOSED' ? 'text-zinc-400' : 'text-blue-400'} />
+              <Row label="Lado" value={<span className={data.side === 'BUY' ? 'text-emerald-400' : 'text-red-400'}>{String(data.side || 'BUY')}</span>} />
+              <Row label="F. Entrada" value={fmtDate(data.entryDate)} />
+              <Row label="P. Entrada" value={fmtPrice(data.entryPrice)} />
+              <Row label="M. Entrada" value={fmtMoney(data.entryAmount)} />
+              <Row label="F. Salida" value={fmtDate(data.exitDate)} />
+              <Row label="P. Salida" value={fmtPrice(data.exitPrice)} />
+              <Row label="M. Salida" value={fmtMoney(data.exitAmount)} />
+              <Row label="Cantidad" value={String(data.qty ?? '—')} />
               <Row label="Días" value={String(data.days)} />
-              <Row label="Rdto $" value={fmtMoney(data.returnAmount)} color={Number(data.returnAmount) >= 0 ? 'text-emerald-400' : 'text-red-400'} />
-              <Row label="Rdto %" value={fmtPct(data.returnPercent)} color={Number(data.returnPercent) >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+              <Row label="PNL $" value={fmtMoney(data.pnlNominal)} color={Number(data.pnlNominal) >= 0 ? 'text-emerald-400' : 'text-red-400'} />
+              <Row label="PNL %" value={fmtPct(data.pnlPercent)} color={Number(data.pnlPercent) >= 0 ? 'text-emerald-400' : 'text-red-400'} />
               <Row label="TNA" value={fmtPct(data.tna)} />
               <Row label="Broker" value={String(data.broker || '—')} />
-              <Row label="Cuenta" value={String(data.cuenta || '—')} />
-              <Row label="Instrumento" value={String(data.instrumentType || '—')} />
+              <Row label="Cuenta" value={String(data.account || '—')} />
+              <Row label="Instrumento" value={data.symbol ? getInstrumentType(String(data.symbol)) : '—'} />
             </>
           )}
         </div>

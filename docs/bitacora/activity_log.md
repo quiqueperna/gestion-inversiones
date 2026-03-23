@@ -2,6 +2,68 @@
 
 ---
 
+## 22 de Marzo, 2026 — Sesión v11: TradeForm TradeUnits, vista Trades agrupada/desagrupada, estilos y fechas
+
+### Contexto
+Sesión continua en el mismo día que v10 (refactor terminológico). Foco en correcciones de UX y bugs en dos pantallas: TradeForm (pantalla Nueva Ejecución) y la vista Trades (TradeUnits). Cuatro rondas de corrección iterativa más la documentación final.
+
+### Lo hecho
+
+**TradeForm — prop `openTradeUnits` y matching engine**
+- Eliminada dependencia de `openExecutions`; ahora recibe `openTradeUnits: any[]` (filtrado `tradeUnits.filter(tu => tu.status === 'OPEN')` en page.tsx)
+- `matchingTUs` useMemo: filtra por `symbol`, `side === 'BUY'`, `broker`, `account`, ordenados `entryDate` descendente
+- `strategySortedTUs` useMemo: ordena por estrategia, calcula `closeQty`/`pnlEst` cuando hay qty+price en el form
+
+**TradeForm — tabla MANUAL y no-MANUAL**
+- Ambas tablas: columnas ID, F.Entrada, Disponible, P.Entrada, M.Entrada
+- MANUAL: agrega columna Cerrar; al clickar setea `pendingClose.tuId = tu.id` (no más `entryExecId` — fix ID mismatch)
+- No-MANUAL: sin Cerrar; eliminadas columnas "A Cerrar" y "PNL Est." de esta tabla
+
+**TradeForm — panel preview no-MANUAL**
+- Panel separado "Al guardar, se cerrarán estos Trades — estrategia X"
+- Visible solo cuando `strategySortedTUs.some(r => r.closeQty)` (qty+price ingresados)
+- Columnas: ID, F.Entrada, Disponible, Cant. a Cerrar, P.Entrada, P.Salida, PNL Est.
+
+**TradeForm — formato de fechas**
+- `import { format } from "date-fns"` agregado
+- Todas las fechas en los paneles: `format(new Date(tu.entryDate), 'dd/MM/yyyy')`
+- Reemplazados todos los `toLocaleDateString('es-AR')` / `toLocaleDateString("es-AR")`
+
+**trades.ts — timestamp real al cerrar**
+- `closeTradeUnitWithQuantity`: `new Date(y, m-1, d, now.getHours(), now.getMinutes(), now.getSeconds())`
+- `closeTradeUnitManually`: mismo fix (no más `T12:00:00` artificial para hora de cierre)
+
+**page.tsx — filtro Estado**
+- Default `tuStatusFilter` cambiado de `''` a `'OPEN'`
+- Labels "Abierta/Cerrada" → "Abiertos/Cerrados"
+
+**page.tsx — Agrupar por DropdownMultiCheck**
+- Opciones: `['Símbolo', 'Cuenta', 'Broker']` — eliminada "Ninguno" del array
+- Prop `allSelectsAll` agregada: "Todos" alterna entre todo-seleccionado y vacío
+
+**page.tsx — vista agrupada (contenedor y estilos)**
+- Contenedor: `bg-zinc-900/50 rounded-lg border border-white/5` (igual a DataTable)
+- Barra metadata: N REGISTROS + botones 25/50/100/Todos con estado `groupedPageSize`/`groupedShowAll`
+- Cabecera: columnas en orden SÍMBOLO, F.ENTRADA, F.SALIDA, LADO, CANT, P.ENTRADA, P.SALIDA, M.ENTRADA, M.SALIDA, DÍAS, PNL $, PNL %, TNA, ESTADO, BROKER, CUENTA
+- Filas de grupo: todo `text-zinc-400`; "—" en celdas de fecha; sin "d"/sin "$"/sin "+"
+- Sub-filas: `text-[12px]`; columnas F.ENTRADA/F.SALIDA colocadas **después de la columna ID** (no al final); formato `dd/MM/yyyy HH:mm`
+
+**page.tsx — tradeUnitColumns (vista Desagrupar)**
+- Todas las columnas ahora tienen función `render` explícita con `text-zinc-400`
+- PNL nominal y porcentual mantienen colores semánticos (emerald/red)
+- Texto/números ya no heredan color blanco del tema
+
+**DropdownMultiCheck — nuevas props**
+- `allSelectsAll?: boolean` — invierte semántica de "Todos": selecciona/deselecciona todo
+- `noneLabel?: string` — ítem extra con separador
+
+### Resultado
+- `npx tsc --noEmit` → ✅ 0 errores
+- `npm run lint` → ✅ 0 warnings
+- `npm run test` → ✅ 42/42
+
+---
+
 ## 21 de Marzo, 2026 — Sesión v9: Vista Depósitos/Retiros, Row-level Editing, renombres
 
 ### Contexto

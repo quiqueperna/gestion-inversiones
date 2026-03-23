@@ -5,13 +5,14 @@ import { cn } from "@/lib/utils";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 
-interface OpenOperation {
+interface OpenExecution {
   id: number;
   date: Date;
-  quantity: number;
+  qty: number;
   price: number;
   amount: number;
   broker: string;
+  account?: string;
   days: number;
 }
 
@@ -21,14 +22,16 @@ interface CloseTradeModalProps {
   closePrice: number;
   closeDate: string;
   broker: string;
-  openOperations: OpenOperation[];
-  onConfirm: (openOperationId: number) => Promise<void>;
+  openOperations: OpenExecution[];
+  strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
+  onStrategyChange: (s: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL') => void;
+  onConfirm: (entryExecId: number) => Promise<void>;
   onCancel: () => void;
 }
 
 export default function CloseTradeModal({
   symbol, closeQuantity, closePrice, closeDate,
-  openOperations, onConfirm, onCancel,
+  openOperations, strategy, onStrategyChange, onConfirm, onCancel,
 }: CloseTradeModalProps) {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
@@ -50,7 +53,7 @@ export default function CloseTradeModal({
         <div className="p-4 border-b border-white/10 flex justify-between items-center bg-zinc-900/50">
           <div>
             <h2 className="text-[12px] font-bold uppercase tracking-widest text-white">
-              Cerrar Trade — <span className="text-blue-400">{symbol}</span>
+              Cerrar Trade Unit — <span className="text-blue-400">{symbol}</span>
             </h2>
             <p className="text-[11px] text-zinc-500 mt-0.5">
               Vendés {closeQuantity} a ${closePrice} el {closeDate}
@@ -63,8 +66,24 @@ export default function CloseTradeModal({
 
         {/* Body */}
         <div className="p-4 space-y-2">
+          {/* Estrategia de matching */}
+          <div className="flex items-center gap-3 mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 shrink-0">Estrategia</span>
+            <select
+              value={strategy}
+              onChange={e => onStrategyChange(e.target.value as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL')}
+              className="flex-1 px-2 py-1 bg-zinc-800 border border-white/10 rounded-lg text-[11px] text-zinc-200 outline-none focus:border-blue-500/50 transition-colors"
+            >
+              <option value="FIFO">FIFO (más antiguo primero)</option>
+              <option value="LIFO">LIFO (más reciente primero)</option>
+              <option value="MAX_PROFIT">Máximo Profit</option>
+              <option value="MIN_PROFIT">Mínimo Profit</option>
+              <option value="MANUAL">Manual</option>
+            </select>
+          </div>
+
           <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-3">
-            Seleccioná la operación de apertura a cerrar:
+            Seleccioná la ejecución de apertura a cerrar:
           </p>
 
           {openOperations.map(op => {
@@ -91,9 +110,10 @@ export default function CloseTradeModal({
                         {format(new Date(op.date), "dd/MM/yyyy", { locale: es })}
                       </span>
                       <span className="text-[11px] font-bold text-zinc-300">
-                        {op.quantity} × ${op.price}
+                        {op.qty} × ${op.price}
                       </span>
                       <span className="text-[10px] text-zinc-500">{op.broker}</span>
+                      {op.account && <span className="text-[10px] text-zinc-600">{op.account}</span>}
                       <span className="text-[10px] text-zinc-600">{op.days}d abierta</span>
                     </div>
                   </div>

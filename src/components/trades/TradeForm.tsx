@@ -5,34 +5,41 @@ import { useForm, SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { tradeSchema, TradeInput } from "@/lib/validations";
 import { X, ClipboardPaste, Check } from "lucide-react";
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { cn } from "@/lib/utils";
+import { format } from "date-fns";
 
-interface OpenPosition {
+interface OpenExecution {
   id: number;
   date: Date;
   symbol: string;
-  quantity: number;
-  openPrice: number;
+  qty: number;
+  price: number;
   broker: string;
-  cuenta?: string;
+  account?: string;
 }
 
 interface TradeFormProps {
   onClose: () => void;
   onSave: (data: TradeInput) => Promise<void>;
-  onClosePosition?: (openOpId: number, quantity: number, price: number, date: string) => Promise<void>;
+  onCloseExecution?: (entryExecId: number, qty?: number, price?: number, date?: string, account?: string, broker?: string) => Promise<void>;
   initialData?: any;
   inline?: boolean;
-  openPositions?: OpenPosition[];
+  openExecutions?: OpenExecution[];
+  openTradeUnits?: any[];
+  // Legacy prop compat
+  openPositions?: OpenExecution[];
+  onClosePosition?: (openOpId: number, quantity?: number, price?: number, date?: string) => Promise<void>;
+  getOpenExecutionsForClosing?: (symbol: string, side: 'BUY' | 'SELL', account: string, broker: string) => Promise<any[]>;
+  cuentas?: Array<{ id: number; nombre: string; matchingStrategy?: string }>;
 }
 
-export default function TradeForm({ onClose, onSave, initialData, inline = false, openPositions = [] }: TradeFormProps) {
+export default function TradeForm({ onClose, onSave, initialData, inline = false, openTradeUnits = [], onCloseExecution, getOpenExecutionsForClosing, cuentas }: TradeFormProps) {
   const [pasteMode, setPasteMode] = useState(false);
   const [pasteText, setPasteText] = useState("");
   const [pendingClose, setPendingClose] = useState<{
-    opId: number; qty: number; price: number; date: string;
-    symbol: string; openDate: string; openPrice: number; broker: string; cuenta: string;
+    opId: number; tuId: number; qty: number; price: number; date: string;
+    symbol: string; openDate: string; openPrice: number; broker: string; account: string;
   } | null>(null);
   const [closeWarning, setCloseWarning] = useState<string | null>(null);
 
@@ -47,23 +54,74 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
     defaultValues: {
       entryDate: new Date().toISOString().split("T")[0],
       broker: "Schwab",
-      cuenta: "USA",
-      type: "BUY",
+      account: "USA",
+      side: "BUY",
       isClosed: false,
-      isFalopa: false,
-      shouldFollow: false,
-      isIntra: false,
+      currency: "USD",
+      commissions: 0,
       ...initialData,
     },
   });
 
+  const watchedSymbol = watch("symbol")?.toUpperCase() || "";
+  const watchedSide = watch("side");
+  const watchedBroker = watch("broker");
+  const watchedAccount = watch("account");
+  const watchedQty = watch("qty");
+  const watchedPrice = watch("entryPrice");
+
+  // Derive strategy from selected account
+  const accountStrategy = useMemo(() => {
+    const cuenta = cuentas?.find(c => c.nombre === watchedAccount);
+    return (cuenta?.matchingStrategy as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL') ?? 'FIFO';
+  }, [cuentas, watchedAccount]);
+  const isManualStrategy = accountStrategy === 'MANUAL';
+
+  // Open Trade Units that match symbol / account / broker (opposite side), sorted newest first
+  const matchingTUs = useMemo(() => {
+    if (watchedSide !== "SELL" || !watchedSymbol) return [];
+    return openTradeUnits
+      .filter((tu: any) =>
+        (tu.symbol ?? '').toUpperCase() === watchedSymbol &&
+        tu.side === 'BUY' &&
+        tu.broker === watchedBroker &&
+        (tu.account || 'USA') === (watchedAccount || 'USA')
+      )
+      .sort((a: any, b: any) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+  }, [watchedSide, watchedSymbol, watchedBroker, watchedAccount, openTradeUnits]);
+
+  // Strategy-sorted TUs with optional closeQty/PNL estimate (always shown, calculated when qty+price available)
+  const strategySortedTUs = useMemo(() => {
+    if (!matchingTUs.length || isManualStrategy) return [];
+    const sorted = [...matchingTUs] as any[];
+    if (accountStrategy === 'FIFO') {
+      sorted.sort((a, b) => new Date(a.entryDate).getTime() - new Date(b.entryDate).getTime());
+    } else if (accountStrategy === 'LIFO') {
+      sorted.sort((a, b) => new Date(b.entryDate).getTime() - new Date(a.entryDate).getTime());
+    } else if (accountStrategy === 'MAX_PROFIT') {
+      sorted.sort((a, b) => (Number(watchedPrice) - b.entryPrice) / b.entryPrice - (Number(watchedPrice) - a.entryPrice) / a.entryPrice);
+    } else if (accountStrategy === 'MIN_PROFIT') {
+      sorted.sort((a, b) => (Number(watchedPrice) - a.entryPrice) / a.entryPrice - (Number(watchedPrice) - b.entryPrice) / b.entryPrice);
+    }
+    const totalQty = Number(watchedQty) || 0;
+    let remaining = totalQty;
+    return sorted.map((tu: any) => {
+      const closeQty = totalQty > 0 && remaining > 0 ? Math.min(remaining, tu.qty) : null;
+      if (closeQty) remaining -= closeQty;
+      const pnlEst = (closeQty && watchedPrice) ? (Number(watchedPrice) - tu.entryPrice) * closeQty : null;
+      return { tu, closeQty, pnlEst };
+    });
+  }, [matchingTUs, accountStrategy, isManualStrategy, watchedQty, watchedPrice]);
+
   const onSubmit: SubmitHandler<any> = async (data) => {
+    const shouldAutoClose = watchedSide === 'SELL' && matchingTUs.length > 0 && !isManualStrategy;
     await onSave({
       ...data as TradeInput,
-      pendingCloseOpId: pendingClose?.opId ?? null,
-      pendingCloseQty: pendingClose?.qty ?? null,
-      pendingClosePrice: pendingClose?.price ?? null,
-      pendingCloseDate: pendingClose?.date ?? null,
+      pendingCloseOpId: isManualStrategy ? (pendingClose?.opId ?? null) : null,
+      pendingCloseQty: isManualStrategy ? (pendingClose?.qty ?? null) : (shouldAutoClose ? Number(watchedQty) : null),
+      pendingClosePrice: isManualStrategy ? (pendingClose?.price ?? null) : (shouldAutoClose ? Number(watchedPrice) : null),
+      pendingCloseDate: isManualStrategy ? (pendingClose?.date ?? null) : (shouldAutoClose ? String(data.entryDate) : null),
+      pendingCloseStrategy: isManualStrategy ? null : (shouldAutoClose ? accountStrategy : null),
     } as any);
   };
 
@@ -83,32 +141,18 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
           setValue("entryDate", parts[0]);
           setValue("symbol", parts[1].toUpperCase());
       }
-      setValue("quantity", qty);
+      setValue("qty", qty);
       setValue("entryPrice", price);
       setValue("broker", broker);
       setPasteMode(false);
     }
   };
 
-  const watchedSymbol = watch("symbol")?.toUpperCase() || "";
-  const watchedType = watch("type");
-  const watchedBroker = watch("broker");
-  const watchedCuenta = watch("cuenta");
-
-  // Show positions to close when symbol matches, broker+cuenta match, and type is opposite
-  const matchingPositions = watchedType === "SELL" && watchedSymbol
-    ? openPositions.filter(p =>
-        p.symbol.toUpperCase() === watchedSymbol &&
-        p.broker === watchedBroker &&
-        (p.cuenta || 'USA') === (watchedCuenta || 'USA')
-      )
-    : [];
-
   const inner = (
     <div className="bg-zinc-900 rounded-[8px] w-full max-w-2xl border border-white/10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         <div className="p-5 border-b border-white/10 flex justify-between items-center bg-zinc-900/50">
           <h2 className="text-[12px] font-bold uppercase tracking-widest text-white">
-            {initialData?.id ? "Editar Operación" : "Nueva Operación"}
+            {initialData?.id ? "Editar Transacción" : "Nueva Transacción"}
           </h2>
           <div className="flex items-center gap-4">
             <button
@@ -128,7 +172,7 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
         <div className="flex-1 overflow-y-auto p-6">
           {pasteMode ? (
             <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-              <p className="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Pegue el texto de la operación (Símbolo Fecha Cantidad Precio Broker)</p>
+              <p className="text-[11px] text-zinc-400 uppercase tracking-wider font-semibold">Pegue el texto de la transacción (Símbolo Fecha Cantidad Precio Broker)</p>
               <textarea
                 value={pasteText}
                 onChange={(e) => setPasteText(e.target.value)}
@@ -144,16 +188,16 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
             <form onSubmit={handleSubmit(onSubmit)} className="space-y-5">
               {/* Toggle BUY/SELL */}
               <div className="flex gap-2">
-                {(["BUY", "SELL"] as const).map(t => (
-                  <button key={t} type="button"
-                    onClick={() => setValue("type", t)}
+                {(["BUY", "SELL"] as const).map(s => (
+                  <button key={s} type="button"
+                    onClick={() => setValue("side", s)}
                     className={cn(
                       "flex-1 py-2 rounded-[6px] text-[12px] font-black uppercase tracking-widest transition-all",
-                      watch("type") === t
-                        ? t === "BUY" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+                      watch("side") === s
+                        ? s === "BUY" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
                         : "border border-white/10 text-zinc-500 hover:text-zinc-300"
                     )}>
-                    {t === "BUY" ? "▲ Compra" : "▼ Venta"}
+                    {s === "BUY" ? "▲ Compra" : "▼ Venta"}
                   </button>
                 ))}
               </div>
@@ -176,7 +220,7 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Cantidad</label>
-                  <input type="number" step="any" {...register("quantity", { valueAsNumber: true })}
+                  <input type="number" step="any" {...register("qty", { valueAsNumber: true })}
                     className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all" />
                 </div>
                 <div className="space-y-1.5">
@@ -193,86 +237,164 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                 </div>
                 <div className="space-y-1.5">
                   <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Cuenta</label>
-                  <select {...register("cuenta")}
+                  <select {...register("account")}
                     className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all appearance-none">
-                    <option value="USA">USA</option>
-                    <option value="Argentina">Argentina</option>
-                    <option value="CRYPTO">CRYPTO</option>
+                    {cuentas && cuentas.length > 0
+                      ? cuentas.map(c => <option key={c.id} value={c.nombre}>{c.nombre}</option>)
+                      : (
+                        <>
+                          <option value="USA">USA</option>
+                          <option value="Argentina">Argentina</option>
+                          <option value="CRYPTO">CRYPTO</option>
+                        </>
+                      )
+                    }
                   </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Moneda</label>
+                  <select {...register("currency")}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all appearance-none">
+                    <option value="USD">USD</option>
+                    <option value="ARS">ARS</option>
+                    <option value="USDT">USDT</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[11px] font-bold text-zinc-500 uppercase tracking-widest">Comisiones</label>
+                  <input type="number" step="any" min="0" {...register("commissions", { valueAsNumber: true })}
+                    className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-[6px] text-[14px] focus:border-blue-500 outline-none transition-all"
+                    placeholder="0.00" />
                 </div>
               </div>
 
-              {/* Flags */}
-              <div className="flex gap-3">
-                {[{ id: "isFalopa", label: "Falopa" }, { id: "isIntra", label: "Intra" }].map(flag => (
-                  <label key={flag.id} className="flex items-center gap-2 p-2 bg-zinc-950/50 border border-white/5 rounded-[6px] cursor-pointer hover:bg-zinc-950 transition-colors">
-                    <input type="checkbox" {...register(flag.id as any)} className="w-4 h-4 rounded border-white/10 bg-zinc-900 text-blue-600" />
-                    <span className="text-[11px] font-bold uppercase text-zinc-400">{flag.label}</span>
-                  </label>
-                ))}
-              </div>
-
-              {/* Panel de posiciones abiertas para cierre */}
-              {matchingPositions.length > 0 && (
+              {/* Panel de trades abiertos para cierre */}
+              {matchingTUs.length > 0 && (
                 <div className="rounded-[8px] border border-orange-500/20 bg-orange-500/5 overflow-hidden">
-                  <div className="px-4 py-2 border-b border-orange-500/10 bg-orange-500/5">
+                  <div className="px-4 py-2 border-b border-orange-500/10 bg-orange-500/5 flex items-center justify-between">
                     <p className="text-[10px] font-bold uppercase tracking-widest text-orange-400">
-                      Posiciones abiertas de {watchedSymbol} — seleccioná una para cerrar
+                      {isManualStrategy
+                        ? `Trades abiertos de ${watchedSymbol} — seleccioná uno para cerrar`
+                        : `Estrategia ${accountStrategy} — Trades que se cerrarán`}
                     </p>
+                    <span className="text-[9px] text-zinc-500 uppercase tracking-wider">{accountStrategy}</span>
                   </div>
+
                   <table className="w-full border-collapse text-[12px]">
                     <thead>
                       <tr className="text-[9px] font-bold uppercase text-zinc-500 border-b border-white/5">
-                        <th className="py-1.5 px-3 text-left">Fecha</th>
-                        <th className="py-1.5 px-3 text-right">Cant.</th>
+                        <th className="py-1.5 px-3 text-left">ID</th>
+                        <th className="py-1.5 px-3 text-left">F.Entrada</th>
+                        <th className="py-1.5 px-3 text-right">Disponible</th>
                         <th className="py-1.5 px-3 text-right">P.Entrada</th>
-                        <th className="py-1.5 px-3 text-center">Broker</th>
-                        <th className="py-1.5 px-3 text-center">Cuenta</th>
-                        <th className="py-1.5 px-3"></th>
+                        <th className="py-1.5 px-3 text-right">M.Entrada</th>
+                        {isManualStrategy && <th className="py-1.5 px-3"></th>}
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
-                      {matchingPositions.map(pos => (
-                        <tr key={pos.id} className="hover:bg-white/[0.03] transition-colors">
-                          <td className="py-1.5 px-3 text-zinc-400">{new Date(pos.date).toLocaleDateString("es-AR")}</td>
-                          <td className="py-1.5 px-3 text-right font-bold text-zinc-200">{pos.quantity}</td>
-                          <td className="py-1.5 px-3 text-right text-zinc-400">${pos.openPrice.toFixed(2)}</td>
-                          <td className="py-1.5 px-3 text-center text-zinc-500">{pos.broker}</td>
-                          <td className="py-1.5 px-3 text-center text-zinc-500">{pos.cuenta || 'USA'}</td>
-                          <td className="py-1.5 px-3 text-right">
-                            {pendingClose?.opId === pos.id ? (
-                              <div className="flex items-center gap-1.5 justify-end">
-                                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-900/30 border border-emerald-500/20 px-2 py-0.5 rounded">pendiente</span>
-                                <button type="button" onClick={() => setPendingClose(null)}
-                                  className="text-zinc-500 hover:text-red-400 transition-colors">
-                                  <X className="w-3.5 h-3.5" />
-                                </button>
-                              </div>
-                            ) : (
-                              <button type="button"
-                                onClick={() => {
-                                  const qty = watch("quantity");
-                                  const price = watch("entryPrice");
-                                  const date = watch("entryDate");
-                                  if (!qty || Number(qty) <= 0 || !price || Number(price) <= 0 || !date) {
-                                    setCloseWarning("Completá cantidad, precio y fecha antes de cerrar");
-                                    return;
-                                  }
-                                  setCloseWarning(null);
-                                  const rawDate = pos.date;
-                                  const openDateStr = rawDate instanceof Date
-                                    ? rawDate.toISOString().slice(0, 10)
-                                    : String(rawDate).slice(0, 10);
-                                  setPendingClose({
-                                    opId: pos.id, qty: Number(qty), price: Number(price), date: String(date),
-                                    symbol: pos.symbol, openDate: openDateStr, openPrice: pos.openPrice,
-                                    broker: pos.broker, cuenta: pos.cuenta || 'USA',
-                                  });
-                                }}
-                                className="px-3 py-1 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-500/30 text-orange-400 rounded text-[10px] font-bold uppercase tracking-widest transition-all">
-                                Cerrar
-                              </button>
-                            )}
+                      {isManualStrategy
+                        ? matchingTUs.map((tu: any) => (
+                            <tr key={tu.id} className="hover:bg-white/[0.03] transition-colors">
+                              <td className="py-1.5 px-3 text-zinc-500">#{tu.id}</td>
+                              <td className="py-1.5 px-3 text-zinc-400">{format(new Date(tu.entryDate), 'dd/MM/yyyy')}</td>
+                              <td className="py-1.5 px-3 text-right font-bold text-zinc-200">{tu.qty}</td>
+                              <td className="py-1.5 px-3 text-right text-zinc-400">{Number(tu.entryPrice).toFixed(2)}</td>
+                              <td className="py-1.5 px-3 text-right text-zinc-400">{Math.round(tu.entryAmount ?? 0).toLocaleString()}</td>
+                              <td className="py-1.5 px-3 text-right">
+                                {pendingClose?.tuId === tu.id ? (
+                                  <div className="flex items-center gap-1.5 justify-end">
+                                    <span className="text-[10px] font-bold text-emerald-400 bg-emerald-900/30 border border-emerald-500/20 px-2 py-0.5 rounded">pendiente</span>
+                                    <button type="button" onClick={() => setPendingClose(null)}
+                                      className="text-zinc-500 hover:text-red-400 transition-colors">
+                                      <X className="w-3.5 h-3.5" />
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button type="button"
+                                    onClick={() => {
+                                      const qty = watch("qty");
+                                      const price = watch("entryPrice");
+                                      const date = watch("entryDate");
+                                      if (!qty || Number(qty) <= 0 || !price || Number(price) <= 0 || !date) {
+                                        setCloseWarning("Completá cantidad, precio y fecha antes de cerrar");
+                                        return;
+                                      }
+                                      setCloseWarning(null);
+                                      const rawDate = tu.entryDate;
+                                      const openDateStr = rawDate instanceof Date
+                                        ? rawDate.toISOString().slice(0, 10)
+                                        : String(rawDate).slice(0, 10);
+                                      setPendingClose({
+                                        opId: tu.entryExecId ?? tu.id,
+                                        tuId: tu.id,
+                                        qty: Number(qty), price: Number(price), date: String(date),
+                                        symbol: tu.symbol, openDate: openDateStr, openPrice: tu.entryPrice,
+                                        broker: tu.broker, account: tu.account || 'USA',
+                                      });
+                                    }}
+                                    className="px-3 py-1 bg-orange-600/20 hover:bg-orange-600/40 border border-orange-500/30 text-orange-400 rounded text-[10px] font-bold uppercase tracking-widest transition-all">
+                                    Cerrar
+                                  </button>
+                                )}
+                              </td>
+                            </tr>
+                          ))
+                        : strategySortedTUs.map(({ tu }) => (
+                            <tr key={tu.id} className="hover:bg-white/[0.03] transition-colors">
+                              <td className="py-1.5 px-3 text-zinc-500">#{tu.id}</td>
+                              <td className="py-1.5 px-3 text-zinc-400">{format(new Date(tu.entryDate), 'dd/MM/yyyy')}</td>
+                              <td className="py-1.5 px-3 text-right text-zinc-300">{tu.qty}</td>
+                              <td className="py-1.5 px-3 text-right text-zinc-400">{Number(tu.entryPrice).toFixed(2)}</td>
+                              <td className="py-1.5 px-3 text-right text-zinc-400">{Math.round(tu.entryAmount ?? 0).toLocaleString()}</td>
+                            </tr>
+                          ))
+                      }
+                    </tbody>
+                  </table>
+
+                  {!isManualStrategy && !strategySortedTUs.some(r => r.closeQty) && (
+                    <div className="px-4 py-2 border-t border-orange-500/10 bg-blue-500/5 flex items-center gap-2">
+                      <Check className="w-3 h-3 text-blue-400" />
+                      <p className="text-[10px] text-blue-400">
+                        Ingresá cantidad y precio para ver qué Trades se cerrarán (estrategia {accountStrategy})
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Panel de confirmación — estrategia auto (muestra trades afectados con cant. a cerrar) */}
+              {!isManualStrategy && strategySortedTUs.some(r => r.closeQty) && (
+                <div className="rounded-[8px] border border-blue-500/20 bg-blue-500/5 overflow-hidden">
+                  <div className="px-4 py-2 border-b border-blue-500/10 flex items-center gap-2">
+                    <Check className="w-3.5 h-3.5 text-emerald-400" />
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                      Al guardar, se cerrarán estos Trades — estrategia {accountStrategy}
+                    </p>
+                  </div>
+                  <table className="w-full border-collapse text-[11px]">
+                    <thead>
+                      <tr className="text-[9px] font-bold uppercase text-zinc-500 border-b border-white/5 bg-white/[0.02]">
+                        <th className="py-1.5 px-3 text-right">ID</th>
+                        <th className="py-1.5 px-3 text-center">F.Entrada</th>
+                        <th className="py-1.5 px-3 text-right">Disponible</th>
+                        <th className="py-1.5 px-3 text-right">Cant. a Cerrar</th>
+                        <th className="py-1.5 px-3 text-right">P.Entrada</th>
+                        <th className="py-1.5 px-3 text-right">P.Salida</th>
+                        <th className="py-1.5 px-3 text-right">PNL Est.</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {strategySortedTUs.filter(r => r.closeQty).map(({ tu, closeQty, pnlEst }) => (
+                        <tr key={tu.id} className={`border-b border-white/[0.03] ${pnlEst != null ? (pnlEst >= 0 ? 'bg-emerald-500/5' : 'bg-red-500/5') : ''}`}>
+                          <td className="py-1.5 px-3 text-right text-zinc-500">#{tu.id}</td>
+                          <td className="py-1.5 px-3 text-center text-zinc-400">{format(new Date(tu.entryDate), 'dd/MM/yyyy')}</td>
+                          <td className="py-1.5 px-3 text-right text-zinc-400">{tu.qty}</td>
+                          <td className="py-1.5 px-3 text-right font-bold text-white">{closeQty}</td>
+                          <td className="py-1.5 px-3 text-right text-zinc-400">{Number(tu.entryPrice).toFixed(2)}</td>
+                          <td className="py-1.5 px-3 text-right text-zinc-300">{watchedPrice ? Number(watchedPrice).toFixed(2) : '—'}</td>
+                          <td className={`py-1.5 px-3 text-right font-bold ${pnlEst != null ? (pnlEst >= 0 ? 'text-emerald-400' : 'text-red-400') : 'text-zinc-500'}`}>
+                            {pnlEst != null ? `${pnlEst >= 0 ? '+' : ''}${pnlEst.toFixed(2)}` : '—'}
                           </td>
                         </tr>
                       ))}
@@ -287,14 +409,14 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                 </div>
               )}
 
-              {pendingClose && (() => {
+              {pendingClose && isManualStrategy && (() => {
                 const rdto = (pendingClose.price - pendingClose.openPrice) * pendingClose.qty;
                 const montoSalida = pendingClose.price * pendingClose.qty;
                 return (
                   <div className="rounded-[8px] border border-blue-500/20 bg-blue-500/5 overflow-hidden">
                     <div className="px-4 py-2 border-b border-blue-500/10 bg-blue-500/5 flex items-center gap-2">
                       <Check className="w-3.5 h-3.5 text-emerald-400" />
-                      <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Al guardar, se cerrará este trade</p>
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-blue-400">Al guardar, se cerrará este Trade</p>
                     </div>
                     <table className="w-full border-collapse text-[11px]">
                       <thead>
@@ -307,14 +429,14 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                           <th className="py-1.5 px-3 text-right">P.Salida</th>
                           <th className="py-1.5 px-3 text-right">M.Salida</th>
                           <th className="py-1.5 px-3 text-center">F.Salida</th>
-                          <th className="py-1.5 px-3 text-right">Rdto $</th>
+                          <th className="py-1.5 px-3 text-right">PNL $</th>
                         </tr>
                       </thead>
                       <tbody>
                         <tr>
-                          <td className="py-2 px-3 text-right text-zinc-500">#{pendingClose.opId}</td>
+                          <td className="py-2 px-3 text-right text-zinc-500">#{pendingClose.tuId}</td>
                           <td className="py-2 px-3 text-center text-zinc-400">
-                            {new Date(pendingClose.openDate + 'T12:00:00').toLocaleDateString("es-AR")}
+                            {format(new Date(pendingClose.openDate + 'T12:00:00'), 'dd/MM/yyyy')}
                           </td>
                           <td className="py-2 px-3">
                             <span className="px-1.5 py-0.5 bg-white/5 rounded text-[10px] font-black border border-white/10 text-zinc-200">{pendingClose.symbol}</span>
@@ -324,7 +446,7 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                           <td className="py-2 px-3 text-right font-bold text-zinc-200">${pendingClose.price.toFixed(2)}</td>
                           <td className="py-2 px-3 text-right text-zinc-300">${Math.round(montoSalida).toLocaleString()}</td>
                           <td className="py-2 px-3 text-center text-zinc-400">
-                            {new Date(pendingClose.date + 'T12:00:00').toLocaleDateString("es-AR")}
+                            {format(new Date(pendingClose.date + 'T12:00:00'), 'dd/MM/yyyy')}
                           </td>
                           <td className={cn("py-2 px-3 text-right font-black", rdto >= 0 ? "text-emerald-400" : "text-red-400")}>
                             {rdto >= 0 ? "+" : ""}${Math.round(rdto).toLocaleString()}
@@ -343,7 +465,7 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
                 </button>
                 <button type="submit" disabled={isSubmitting}
                   className="flex-[2] py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-[6px] text-[12px] font-bold uppercase tracking-widest shadow-lg shadow-blue-900/20 disabled:opacity-50 transition-all active:scale-[0.98]">
-                  {isSubmitting ? "Guardando..." : initialData?.id ? "Actualizar" : "Guardar Operación"}
+                  {isSubmitting ? "Guardando..." : initialData?.id ? "Actualizar" : "Guardar Transacción"}
                 </button>
               </div>
             </form>
@@ -351,6 +473,10 @@ export default function TradeForm({ onClose, onSave, initialData, inline = false
         </div>
       </div>
   );
+
+  void onCloseExecution;
+  void getOpenExecutionsForClosing;
+
   if (inline) return <div className="flex justify-center py-6">{inner}</div>;
   return <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">{inner}</div>;
 }

@@ -1,65 +1,21 @@
-# Gestión de Inversiones
+# Funcionalidades Implementadas — Gestión de Inversiones
 
-## Operaciones
+> Documento requerido por `docs/domain/core.md`. Última actualización: 2026-03-20.
 
-Una operación es una entrada (compra/venta) de un instrumento del mercado.
-
-### Campos de una operación:
-
-* **ID**: número, entero, incremental comenzando de 1.
-* **Fecha**: Fecha de realización de la operación.
-* **Símbolo**: es el ticket del instrumento (ej: TSLA, NVDA).
-* **Cantidad**: cantidad comprada (número positivo) o vendida (número negativo).
-* **Precio**: precio al que se compró (si es un long) o vendió (si es un short).
-* **Monto**: monto total de la inversión inicial.
-* **Broker**: Texto que indica el broker (por defecto: `Schwab`).
-* **Cuenta**: Texto que indica una cuenta (por defecto: `USA`).
-* **Atributos (Booleanos)**:
-    * **Falopa**: `true/false`
-    * **Intra**: `true/false`
-
-## Trade
-
-Un Trade es una entrada (compra/venta) de un instrumento del mercado y el posterior cierre (venta/compra) del instrumento con la misma cantidad.
-Cada vez que se entra al mercado se genera un trade, si tenemos una operacion sin contraparte el trade se mantiene abierto, cuando agregamos la contraparte (mismo simbolo, misma cantidad, operacion opuesta) el trade se cierra.
-
-### Campos de un Trade:
-
-* **ID**: número, entero, incremental comenzando de 1.
-* **Fecha de Entrada**: Fecha de realización de la operación.
-* **Símbolo**: es el ticket del instrumento (ej: TSLA, NVDA).
-* **Cantidad**: cantidad comprada (número positivo) o vendida (número negativo).
-* **Precio de Entrada**: precio al que se compró (si es un long) o vendió (si es un short).
-* **Monto de Entrada**: monto total de la inversión inicial.
-* **Precio de Salida**: precio de cierre de la operación.
-* **Monto de Salida**: monto de la operación al momento del cierre.
-* **Fecha de Salida**: fecha de cierre de la operación.
-* **Cantidad de Días**: días transcurridos entre la fecha de entrada y la fecha de salida.
-* **Rendimiento $**: Diferencia entre el monto de entrada y el monto de salida.
-* **Rendimiento %**: Porcentaje de ganancia o pérdida en relación al monto invertido.
-* **TNA**: Tasa Nominal Anual de la inversión.
-* **Broker**: Texto que indica el broker (por defecto: `AMR`).
-* **Atributos (Booleanos)**:
-    * **Cerrado**: `true/false`
-
----
-
-## Interfaz de Usuario de Alta de Operación
-
-1. Hacer el **alta de una operación** mediante un formulario con dos métodos de entrada:
-2. **Controles tradicionales**: Inputs, combos, datepickers, etc.
-3. **Pegado de texto**: Un área de texto para procesar strings (formato a definir).
-4. ** Tiene que estar todos los campos de la operación.
-
-## Dashboard
+## 1. Dashboard Principal
 
 - Grilla de rendimientos: filas = meses, columnas = cuentas + TOTAL
 - Columnas por cuenta: Balance, PL USD, PL %, I/E (Ingresos/Extracciones)
+- Agrupación por cuenta (USA / Argentina / CRYPTO) en vez de broker
 - Footer con suma de totales por columna
-- Selector de año (2023–2026 y todos)
+- Selector de año (2023–2026)
+- 4 tarjetas de resumen: Operaciones Abiertas, Trades Cerrados, Win Rate, Avg Trade Size
+- Top 5 Trades por P&L $
+- Mejor Mes (mes con mayor retorno acumulado)
+- Mejor Trade (mayor rendimiento % individual)
 
-## Analytics
-- Tarjetas de resumen: Operaciones Abiertas, Trades Cerrados, Avg Trade Size profit  factor, win rates (de trades y de trades positivos), top 5 trades, mejor mes, mejor trades. 
+## 2. Analytics — 15+ Métricas configurables por período
+
 | Métrica | Descripción |
 |---|---|
 | Net Profit | Ganancia neta total en el período |
@@ -80,7 +36,6 @@ Cada vez que se entra al mercado se genera un trade, si tenemos una operacion si
 | Expectancy $ | Retorno esperado por trade |
 | Rendimiento por instrumento | P&L separado por STOCK / CEDEAR / CRYPTO |
 | Curva de Equity | Serie temporal del rendimiento acumulado |
-  
 
 ## 3. Listado de Operaciones
 
@@ -116,21 +71,47 @@ Cada vez que se entra al mercado se genera un trade, si tenemos una operacion si
 
 - Formulario completo con todos los campos requeridos
 - Toggle visual BUY / SELL (verde / rojo)
-- Selector de broker (Schwab / Binance / Cocos / Balanz)
+- Selector de broker (Schwab / Binance / Cocos / Balanz / AMR / IOL / IBKR / PP)
+- Selector de cuenta (USA / Argentina / CRYPTO)
 - Selector de tipo de instrumento (STOCK / CEDEAR / CRYPTO)
-- Selector de cuenta (USA / CRYPTO / Argentina)
 - Modo pegado rápido: parsea texto libre (`AAPL 10 150 BUY 2024-01-15`) o formato clave=valor
 - Cierre manual: cuando hay 2+ operaciones abiertas del mismo símbolo, muestra modal de selección con rendimiento proyectado de cada opción
+- **Modo edición real**: el botón lápiz en la tabla abre el formulario con datos pre-cargados y llama a `updateOperation`
 
-## 7. Ingresos / Egresos (CashFlow)
+## 7. Modal de Solo Lectura (ViewDetailModal)
+
+- Ver detalle completo de una operación o trade en un modal overlay
+- Campos formateados: fechas, montos, porcentajes, colores semánticos
+- Accesible desde el botón lupa en las tablas de Operaciones y Trades
+
+## 8. Sección Cuentas
+
+- CRUD completo de cuentas desde la UI (pestaña "Cuentas")
+- Cuentas por defecto: USA, Argentina, CRYPTO
+- Agregar nueva cuenta con nombre y descripción opcional
+- Eliminar cuenta existente
+- Campo `cuenta` en operaciones y trades: derivado del broker si no está en CSV
+
+## 9. Ingresos / Egresos (CashFlow)
 
 - Carga manual de depósitos y retiros por broker desde la UI
 - Impacta la columna I/E del Dashboard
 - Listado de movimientos (fecha, monto, tipo, broker, descripción)
 - Eliminar movimiento
 
-## 8. Cuentas
+## 10. Datos de Demo
 
-- Carga manual de cuentas desde la UI
-- Impacta en la matriz de rendimiento del dahsboard
-  
+- CSV con 238 operaciones en rango 2024–2026
+- ~110 trades cerrados + 18 posiciones abiertas
+- Mix de símbolos: AAPL, TSLA, NVDA, MSFT, GOOGL, META, AMZN, MELI, GGAL, YPF, BBAR
+- Brokers: IBKR, AMR, IOL
+- Matching FIFO en memoria al inicio de la aplicación
+
+## 11. Calidad y Estándares
+
+- ESLint guardrails: UI y lib no pueden importar Prisma ni server actions directamente
+- TypeScript strict mode sin errores
+- Tests unitarios: calculations (5), operation-parser (8+), prices (4)
+- Tests de integración: dashboard stats, closeTradeManually
+- Tests E2E Playwright: dashboard, operaciones, trades
+- CI GitHub Actions: lint → typecheck → test → build → e2e

@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { revalidatePath } from "next/cache";
 import path from 'path';
 import fs from 'fs';
-import { getMemoryState, initializeMemoryState, addCashFlow as addCashFlowMem, removeCashFlow as removeCashFlowMem, updateCashFlow as updateCashFlowMem, getCuentas as getCuentasLib, addCuenta as addCuentaLib, removeCuenta as removeCuentaLib, updateCuenta as updateCuentaLib, Cuenta, getBrokers as getBrokersLib, addBroker as addBrokerLib, updateBroker as updateBrokerLib, removeBroker as removeBrokerLib, Broker } from "@/lib/data-loader";
+import { getMemoryState, initializeMemoryState, addCashFlow as addCashFlowMem, removeCashFlow as removeCashFlowMem, updateCashFlow as updateCashFlowMem, getCuentas as getCuentasLib, addCuenta as addCuentaLib, removeCuenta as removeCuentaLib, updateCuenta as updateCuentaLib, Cuenta, getBrokers as getBrokersLib, addBroker as addBrokerLib, updateBroker as updateBrokerLib, removeBroker as removeBrokerLib, Broker, updateCuentaStrategy } from "@/lib/data-loader";
 
 export async function getCashFlows(broker?: string) {
   return await db.cashFlow.findMany({
@@ -134,4 +134,9 @@ export async function updateMemoryBroker(id: number, nombre: string, descripcion
 export async function removeMemoryBroker(id: number): Promise<boolean> {
   ensureLoaded();
   return removeBrokerLib(id);
+}
+
+export async function updateCuentaMatchingStrategy(id: number, strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL'): Promise<boolean> {
+  ensureLoaded();
+  return updateCuentaStrategy(id, strategy);
 }

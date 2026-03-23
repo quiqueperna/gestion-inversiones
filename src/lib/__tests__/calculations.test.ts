@@ -4,8 +4,8 @@ import { calculateTradeMetrics } from '../calculations';
 describe('calculateTradeMetrics', () => {
   it('calcula returnAmount positivo correctamente', () => {
     const result = calculateTradeMetrics({
-      quantity: 10, openPrice: 100, closePrice: 110,
-      openDate: new Date('2024-01-01'), closeDate: new Date('2024-01-11')
+      qty: 10, entryPrice: 100, exitPrice: 110,
+      entryDate: new Date('2024-01-01'), exitDate: new Date('2024-01-11')
     });
     expect(result.entryAmount).toBe(1000);
     expect(result.exitAmount).toBe(1100);
@@ -16,8 +16,8 @@ describe('calculateTradeMetrics', () => {
 
   it('calcula returnAmount negativo (pérdida)', () => {
     const result = calculateTradeMetrics({
-      quantity: 10, openPrice: 100, closePrice: 90,
-      openDate: new Date('2024-01-01'), closeDate: new Date('2024-01-11')
+      qty: 10, entryPrice: 100, exitPrice: 90,
+      entryDate: new Date('2024-01-01'), exitDate: new Date('2024-01-11')
     });
     expect(result.returnAmount).toBe(-100);
     expect(result.returnPercent).toBeCloseTo(-10, 1);
@@ -25,8 +25,8 @@ describe('calculateTradeMetrics', () => {
 
   it('calcula TNA correctamente', () => {
     const result = calculateTradeMetrics({
-      quantity: 10, openPrice: 100, closePrice: 110,
-      openDate: new Date('2024-01-01'), closeDate: new Date('2024-01-11')
+      qty: 10, entryPrice: 100, exitPrice: 110,
+      entryDate: new Date('2024-01-01'), exitDate: new Date('2024-01-11')
     });
     // 10% en 10 días → TNA = (10/10)*365 = 365%
     expect(result.tna).toBeCloseTo(365, 0);
@@ -34,17 +34,28 @@ describe('calculateTradeMetrics', () => {
 
   it('maneja days=0 usando precio actual sin crashear', () => {
     const result = calculateTradeMetrics({
-      quantity: 10, openPrice: 100, closePrice: 110,
-      openDate: new Date(), closeDate: new Date()
+      qty: 10, entryPrice: 100, exitPrice: 110,
+      entryDate: new Date(), exitDate: new Date()
     });
     expect(result.days).toBeGreaterThanOrEqual(1);
   });
 
-  it('usa currentPrice como closePrice si no hay closePrice', () => {
+  it('usa currentPrice como exitPrice si no hay exitPrice', () => {
     const result = calculateTradeMetrics({
-      quantity: 10, openPrice: 100, currentPrice: 120,
-      openDate: new Date('2024-01-01'), closeDate: new Date('2024-01-11')
+      qty: 10, entryPrice: 100, currentPrice: 120,
+      entryDate: new Date('2024-01-01'), exitDate: new Date('2024-01-11')
     });
     expect(result.exitAmount).toBe(1200);
+  });
+
+  // Backward compat: still works with old field names
+  it('funciona con nombres de campo antiguos (openPrice, closePrice)', () => {
+    const result = calculateTradeMetrics({
+      quantity: 10, openPrice: 100, closePrice: 110,
+      openDate: new Date('2024-01-01'), closeDate: new Date('2024-01-11')
+    });
+    expect(result.entryAmount).toBe(1000);
+    expect(result.exitAmount).toBe(1100);
+    expect(result.returnAmount).toBe(100);
   });
 });

@@ -7,14 +7,14 @@ import {
   TrendingUp, TrendingDown, DollarSign,
   Briefcase, Percent, Clock, PieChart, Wallet,
   Trophy, AlertCircle, Plus, RefreshCw,
-  ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X
+  ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X, Settings
 } from "lucide-react";
 import {
   format, startOfToday, endOfToday,
   startOfWeek, endOfWeek, subDays, startOfMonth, endOfMonth,
   subMonths, startOfYear, endOfYear, isWithinInterval, eachDayOfInterval
 } from "date-fns";
-import { cn } from "@/lib/utils";
+import { cn, getInstrumentType } from "@/lib/utils";
 import YieldsGrid from "@/components/dashboard/YieldsGrid";
 import CalendarGrid from "@/components/dashboard/CalendarGrid";
 import PieChartComponent from "@/components/ui/PieChart";
@@ -29,14 +29,14 @@ import BrokersSection from "@/components/brokers/BrokersSection";
 
 // Server Actions
 import { getYieldsData as getYields, getStats, getDashboardSummary, getTopStats, getEquityCurve } from "@/server/actions/dashboard";
-import { getOperations, getTrades, createOperation, getOpenPositions, deleteOperation, deleteTrade, closeTradeManually, updateOperation, closeTradeWithQuantity } from "@/server/actions/trades";
-import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryCuentas, addMemoryCuenta, removeMemoryCuenta, updateMemoryCuenta, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker } from "@/server/actions/transactions";
+import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing } from "@/server/actions/trades";
+import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryCuentas, addMemoryCuenta, removeMemoryCuenta, updateMemoryCuenta, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker, updateCuentaMatchingStrategy } from "@/server/actions/transactions";
 import TradeForm from "@/components/trades/TradeForm";
 import DropdownMultiCheck from "@/components/ui/DropdownMultiCheck";
 import { exportToCSV, downloadCSV } from "@/lib/csv-exporter";
 
 // Tipos
-type View = "dashboard" | "analytics" | "operations" | "trades" | "open" | "cuentas" | "brokers" | "nueva-op" | "ie" | "movimientos";
+type View = "dashboard" | "analytics" | "transactions" | "trade-units" | "cuentas" | "brokers" | "nueva-trans" | "ie" | "movimientos" | "configuraciones";
 
 export default function Home() {
   // Estado Global
@@ -56,20 +56,31 @@ export default function Home() {
   const [prevView, setPrevView] = useState<View>("dashboard");
   const [closeModalData, setCloseModalData] = useState<{
     symbol: string; closePrice: number; closeQuantity: number;
-    closeDate: string; broker: string;
-    openOps: Array<{ id: number; date: Date; quantity: number; price: number; amount: number; broker: string; days: number }>;
+    closeDate: string; broker: string; account: string;
+    openOps: Array<{ id: number; date: Date; qty: number; price: number; amount: number; broker: string; account: string; days: number }>;
+    strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
   } | null>(null);
   const [activeTooltip, setActiveTooltip] = useState<number | null>(null);
   const [brokerFilters, setBrokerFilters] = useState<string[]>([]);
   const [instrumentFilters, setInstrumentFilters] = useState<string[]>([]);
-  const [tradeEstadoFilters, setTradeEstadoFilters] = useState<string[]>([]);
   const [cuentaFilters, setCuentaFilters] = useState<string[]>([]);
   const [selectedCalendarMonths, setSelectedCalendarMonths] = useState<string[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [openPage, setOpenPage] = useState(1);
-  const [openPageSize, setOpenPageSize] = useState(25);
+
+  // Trade Units view mode
+  const [tuViewMode, setTuViewMode] = useState<'detail' | 'grouped'>('detail');
+  const [groupBy, setGroupBy] = useState<string[]>(['symbol']);
+  const [tuStatusFilter, setTuStatusFilter] = useState<string>('OPEN');
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [configSaved, setConfigSaved] = useState<Record<number, boolean>>({});
+  const [groupedSortKey, setGroupedSortKey] = useState<string>('symbol');
+  const [groupedSortDir, setGroupedSortDir] = useState<'asc' | 'desc'>('asc');
+  const [groupedPageSize, setGroupedPageSize] = useState<number>(25);
+  const [groupedShowAll, setGroupedShowAll] = useState<boolean>(false);
 
   // Modal/Edit State
-  const [editingOperation, setEditingOperation] = useState<any>(null);
+  const [editingExecution, setEditingExecution] = useState<any>(null);
   const [viewingItem, setViewingItem] = useState<{ type: 'operation' | 'trade'; data: any } | null>(null);
   const [cuentas, setCuentas] = useState<any[]>([]);
   const [brokers, setBrokers] = useState<any[]>([]);
@@ -78,9 +89,8 @@ export default function Home() {
   // Data State
   const [stats, setStats] = useState<any>(null);
   const [yields, setYields] = useState<any>(null);
-  const [operations, setOperations] = useState<any[]>([]);
-  const [trades, setTrades] = useState<any[]>([]);
-  const [openPositions, setOpenPositions] = useState<any[]>([]);
+  const [executions, setExecutions] = useState<any[]>([]);
+  const [tradeUnits, setTradeUnits] = useState<any[]>([]);
   const [cashFlows, setCashFlows] = useState<any[]>([]);
   const [editingCfId, setEditingCfId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<{ date: string; type: 'DEPOSIT' | 'WITHDRAWAL'; amount: string; broker: string; cuenta: string; description: string } | null>(null);
@@ -107,10 +117,9 @@ export default function Home() {
   const fetchData = async (isInitial = false) => {
     if (isInitial) setLoading(true); else setRefreshing(true);
     try {
-      const [ops, trs, openPos, st, yld, summ, top, cuentasList, brokersList, cfs] = await Promise.all([
-        getOperations(),
-        getTrades(),
-        getOpenPositions(),
+      const [execs, tus, st, yld, summ, top, cuentasList, brokersList, cfs] = await Promise.all([
+        getExecutions(),
+        getTradeUnits(),
         getStats(activeInterval.start, activeInterval.end),
         getYields(year),
         getDashboardSummary(activeInterval.start, activeInterval.end),
@@ -119,9 +128,8 @@ export default function Home() {
         getMemoryBrokers(),
         getMemoryCashFlows(),
       ]);
-      setOperations(ops);
-      setTrades(trs);
-      setOpenPositions(openPos);
+      setExecutions(execs);
+      setTradeUnits(tus);
       setStats(st);
       setYields(yld);
       setSummary(summ);
@@ -168,7 +176,7 @@ export default function Home() {
   }, [view]);
 
   const navigateTo = (v: View) => { setPrevView(view); setView(v); };
-  const navigateBack = () => setView(prevView === "nueva-op" || prevView === "ie" || prevView === "cuentas" || prevView === "brokers" || prevView === "movimientos" ? "dashboard" : prevView);
+  const navigateBack = () => setView(prevView === "nueva-trans" || prevView === "ie" || prevView === "cuentas" || prevView === "brokers" || prevView === "movimientos" || prevView === "configuraciones" ? "dashboard" : prevView);
 
   // Sync year multicheck → dateFilter range for stats and matrix
   const handleYearsChange = (years: string[]) => {
@@ -192,10 +200,10 @@ export default function Home() {
   // Available years from loaded data
   const availableYears = useMemo(() => {
     const years = new Set<number>();
-    operations.forEach((op: any) => { if (op.date) years.add(new Date(op.date).getFullYear()); });
-    trades.forEach((t: any) => { if (t.openDate) years.add(new Date(t.openDate).getFullYear()); });
+    executions.forEach((exec: any) => { if (exec.date) years.add(new Date(exec.date).getFullYear()); });
+    tradeUnits.forEach((t: any) => { if (t.entryDate) years.add(new Date(t.entryDate).getFullYear()); });
     return [...years].sort((a, b) => b - a);
-  }, [operations, trades]);
+  }, [executions, tradeUnits]);
 
   // Calendar mode: active when period is ≤ 1 month
   const isCalendarMode = useMemo(() => {
@@ -224,13 +232,13 @@ export default function Home() {
       d instanceof Date ? d.toISOString().slice(0, 10) : String(d).slice(0, 10);
 
     const dayMap = new Map<string, { pl: number; count: number }>();
-    trades.forEach((t: any) => {
-      if (!t.isClosed || !t.openDate || !t.closeDate) return;
-      const openStr = toDateStr(t.openDate);
-      const closeStr = toDateStr(t.closeDate);
+    tradeUnits.forEach((t: any) => {
+      if (t.status !== 'CLOSED' || !t.entryDate || !t.exitDate) return;
+      const openStr = toDateStr(t.entryDate);
+      const closeStr = toDateStr(t.exitDate);
       if (openStr !== closeStr) return;
       const existing = dayMap.get(openStr) || { pl: 0, count: 0 };
-      dayMap.set(openStr, { pl: existing.pl + (t.returnAmount || 0), count: existing.count + 1 });
+      dayMap.set(openStr, { pl: existing.pl + (t.pnlNominal || 0), count: existing.count + 1 });
     });
 
     const buildGrid = (monthIdx: number) => {
@@ -257,85 +265,103 @@ export default function Home() {
     };
 
     return calendarMonthsToShow.map(buildGrid);
-  }, [isCalendarMode, calendarYear, calendarMonthsToShow, trades]);
+  }, [isCalendarMode, calendarYear, calendarMonthsToShow, tradeUnits]);
 
-  // Balance total: sum of market values of open positions
+  // Balance total: sum of market values of open trade units
   const totalMarketValue = useMemo(() =>
-    openPositions.reduce((sum: number, p: any) => sum + (p.marketValue || 0), 0),
-  [openPositions]);
+    tradeUnits
+      .filter((t: any) => t.status === 'OPEN')
+      .reduce((sum: number, t: any) => sum + (t.exitAmount || t.entryAmount || 0), 0),
+  [tradeUnits]);
 
-  // Pie chart data
+  // Pie chart data from open trade units
   const pieByInstrument = useMemo(() => {
     const groups: Record<string, number> = {};
-    openPositions.forEach((p: any) => {
-      const key = p.instrumentType || 'STOCK';
-      groups[key] = (groups[key] || 0) + (p.marketValue || 0);
+    tradeUnits.filter((t: any) => t.status === 'OPEN').forEach((t: any) => {
+      const key = getInstrumentType(t.symbol as string);
+      groups[key] = (groups[key] || 0) + (t.exitAmount || t.entryAmount || 0);
     });
     const colors: Record<string, string> = { STOCK: '#3b82f6', CEDEAR: '#8b5cf6', CRYPTO: '#f59e0b' };
     return Object.entries(groups).map(([label, value]) => ({ label, value, color: colors[label] || '#6b7280' }));
-  }, [openPositions]);
+  }, [tradeUnits]);
 
   const pieByCuenta = useMemo(() => {
     const groups: Record<string, number> = {};
-    openPositions.forEach((p: any) => {
-      const key = p.cuenta || 'USA';
-      groups[key] = (groups[key] || 0) + (p.marketValue || 0);
+    tradeUnits.filter((t: any) => t.status === 'OPEN').forEach((t: any) => {
+      const key = t.account || 'USA';
+      groups[key] = (groups[key] || 0) + (t.exitAmount || t.entryAmount || 0);
     });
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
     return Object.entries(groups).map(([label, value], i) => ({ label, value, color: colors[i % colors.length] }));
-  }, [openPositions]);
+  }, [tradeUnits]);
 
   const pieByBroker = useMemo(() => {
     const groups: Record<string, number> = {};
-    openPositions.forEach((p: any) => {
-      const key = p.broker || 'Sin broker';
-      groups[key] = (groups[key] || 0) + (p.marketValue || 0);
+    tradeUnits.filter((t: any) => t.status === 'OPEN').forEach((t: any) => {
+      const key = t.broker || 'Sin broker';
+      groups[key] = (groups[key] || 0) + (t.exitAmount || t.entryAmount || 0);
     });
     const colors = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4', '#f97316', '#84cc16'];
     return Object.entries(groups).map(([label, value], i) => ({ label, value, color: colors[i % colors.length] }));
-  }, [openPositions]);
+  }, [tradeUnits]);
 
-  const handleSaveOperation = async (data: any) => {
+  const handleSaveExecution = async (data: any) => {
     try {
-      if (editingOperation?.id) {
+      if (editingExecution?.id) {
         // Edit mode
-        await updateOperation(editingOperation.id, {
+        await updateExecution(editingExecution.id, {
           symbol: data.symbol?.toUpperCase(),
-          quantity: data.quantity,
+          qty: data.qty,
           price: data.entryPrice,
           broker: data.broker,
-          cuenta: data.cuenta,
-          isFalopa: data.isFalopa,
-          isIntra: data.isIntra,
+          account: data.account,
           date: data.entryDate ? new Date(data.entryDate + 'T12:00:00') : undefined,
+          currency: data.currency,
+          commissions: data.commissions,
         });
-        setEditingOperation(null);
+        setEditingExecution(null);
         navigateBack();
         await fetchData();
         return;
       }
 
       // Create mode
-      await createOperation({
+      await createExecution({
         date: data.entryDate,
         symbol: data.symbol.toUpperCase(),
-        quantity: data.quantity,
+        qty: data.qty,
         price: data.entryPrice,
         broker: data.broker,
-        cuenta: data.cuenta || 'USA',
-        type: data.type || "BUY",
-        isFalopa: data.isFalopa,
-        isIntra: data.isIntra,
+        account: data.account || 'USA',
+        side: data.side || "BUY",
+        currency: data.currency || 'USD',
+        commissions: data.commissions || 0,
       });
 
-      if (data.pendingCloseOpId) {
-        await closeTradeWithQuantity({
+      // Cierre MANUAL: usa pendingCloseOpId
+      if (data.pendingCloseOpId && data.pendingCloseQty && data.pendingClosePrice) {
+        await closeTradeUnitWithQuantity({
           symbol: data.symbol.toUpperCase(),
           closeDate: data.pendingCloseDate,
           closePrice: data.pendingClosePrice,
           totalQty: data.pendingCloseQty,
           broker: data.broker,
-          primaryOpenOperationId: data.pendingCloseOpId,
+          account: data.account || 'USA',
+          primaryEntryExecId: data.pendingCloseOpId,
+          strategy: 'MANUAL',
+        });
+      }
+      // Cierre AUTOMÁTICO por estrategia (FIFO/LIFO/etc)
+      else if (data.pendingCloseStrategy && data.pendingCloseQty && data.pendingClosePrice) {
+        await closeTradeUnitWithQuantity({
+          symbol: data.symbol.toUpperCase(),
+          closeDate: data.pendingCloseDate,
+          closePrice: data.pendingClosePrice,
+          totalQty: data.pendingCloseQty,
+          broker: data.broker,
+          account: data.account || 'USA',
+          primaryEntryExecId: 0, // no importa para estrategias automáticas
+          strategy: data.pendingCloseStrategy,
         });
       }
 
@@ -346,35 +372,19 @@ export default function Home() {
     }
   };
 
-  const handleConfirmClose = async (openOperationId: number) => {
+  const handleConfirmClose = async (entryExecId: number) => {
     if (!closeModalData) return;
-    await closeTradeManually({
+    await closeTradeUnitWithQuantity({
       symbol: closeModalData.symbol,
       closeDate: closeModalData.closeDate,
       closePrice: closeModalData.closePrice,
-      quantity: closeModalData.closeQuantity,
+      totalQty: closeModalData.closeQuantity,
       broker: closeModalData.broker,
-      openOperationId,
+      account: closeModalData.account,
+      primaryEntryExecId: entryExecId,
+      strategy: closeModalData.strategy,
     });
     setCloseModalData(null);
-    await fetchData();
-  };
-
-  const handleClosePosition = async (openOpId: number, quantity?: number, price?: number, date?: string) => {
-    const pos = openPositions.find((p: any) => p.id === openOpId);
-    if (!pos) return;
-    const closeQty = quantity ?? (pos as any).quantity;
-    const closePrice = price ?? (pos as any).currentPrice;
-    const closeDate = date ?? new Date().toISOString().split('T')[0];
-    await closeTradeWithQuantity({
-      symbol: (pos as any).symbol,
-      closeDate,
-      closePrice,
-      totalQty: closeQty,
-      broker: (pos as any).broker,
-      primaryOpenOperationId: openOpId,
-    });
-    navigateBack();
     await fetchData();
   };
 
@@ -421,73 +431,72 @@ export default function Home() {
     setEditDraft(null);
   };
 
-  const handleDeleteOp = async (row: any) => {
-    if (!confirm(`¿Eliminar operación #${row.id} (${row.symbol})?`)) return;
-    await deleteOperation(row.id);
+  const handleDeleteExecution = async (row: any) => {
+    if (!confirm(`¿Eliminar transacción #${row.id} (${row.symbol})?`)) return;
+    await deleteExecution(row.id);
     fetchData();
   };
 
-  const handleViewOp = (row: any) => {
+  const handleViewExecution = (row: any) => {
     setViewingItem({ type: 'operation', data: row });
   };
 
-  const handleEditOp = (row: any) => {
-    setEditingOperation(row);
-    navigateTo("nueva-op");
+  const handleEditExecution = (row: any) => {
+    setEditingExecution(row);
+    navigateTo("nueva-trans");
   };
 
-  const handleViewTrade = (row: any) => {
+  const handleViewTradeUnit = (row: any) => {
     setViewingItem({ type: 'trade', data: row });
   };
 
-  const handleEditTrade = (row: any) => {
-    alert(`Edición de trade #${row.id} — próximamente`);
+  const handleEditTradeUnit = (row: any) => {
+    alert(`Edición de trade unit #${row.id} — próximamente`);
   };
 
-  const handleDeleteTrade = async (row: any) => {
-    if (!confirm(`¿Eliminar trade #${row.id} (${row.symbol})?`)) return;
-    await deleteTrade(row.id);
+  const handleDeleteTradeUnit = async (row: any) => {
+    if (!confirm(`¿Eliminar trade unit #${row.id} (${row.symbol})?`)) return;
+    await deleteTradeUnit(row.id);
     fetchData();
   };
 
-  const handleExportOperations = () => {
+  const handleExportExecutions = () => {
     const csv = exportToCSV(filteredList, [
       { key: 'date', header: 'Fecha' }, { key: 'symbol', header: 'Símbolo' },
-      { key: 'type', header: 'Tipo' }, { key: 'quantity', header: 'Cantidad' },
+      { key: 'side', header: 'Lado' }, { key: 'qty', header: 'Cant.' },
       { key: 'price', header: 'P.Entrada' }, { key: 'amount', header: 'M.Entrada' },
-      { key: 'exitPrice', header: 'P.Salida' }, { key: 'exitDate', header: 'F.Salida' },
-      { key: 'broker', header: 'Broker' },
-      { key: 'isFalopa', header: 'Falopa' }, { key: 'isIntra', header: 'Intra' },
-      { key: 'isClosed', header: 'Estado' },
+      { key: 'broker', header: 'Broker' }, { key: 'account', header: 'Cuenta' },
+      { key: 'currency', header: 'Moneda' }, { key: 'commissions', header: 'Comis.' },
     ]);
-    downloadCSV(csv, `operaciones-${new Date().toISOString().split('T')[0]}.csv`);
+    downloadCSV(csv, `ejecuciones-${new Date().toISOString().split('T')[0]}.csv`);
   };
 
-  const handleExportTrades = () => {
+  const handleExportTradeUnits = () => {
     const csv = exportToCSV(filteredList, [
-      { key: 'openDate', header: 'F.Entrada' }, { key: 'closeDate', header: 'F.Salida' },
-      { key: 'symbol', header: 'Símbolo' }, { key: 'quantity', header: 'Cantidad' },
-      { key: 'openPrice', header: 'P.Entrada' }, { key: 'closePrice', header: 'P.Salida' },
-      { key: 'openAmount', header: 'M.Entrada' }, { key: 'closeAmount', header: 'M.Salida' },
-      { key: 'days', header: 'Días' }, { key: 'returnAmount', header: 'Rdto $' },
-      { key: 'returnPercent', header: 'Rdto %' }, { key: 'tna', header: 'TNA' },
-      { key: 'broker', header: 'Broker' },
+      { key: 'entryDate', header: 'F.Entrada' }, { key: 'exitDate', header: 'F.Salida' },
+      { key: 'symbol', header: 'Símbolo' }, { key: 'side', header: 'Lado' },
+      { key: 'qty', header: 'Cant.' }, { key: 'entryPrice', header: 'P.Entrada' },
+      { key: 'exitPrice', header: 'P.Salida' },
+      { key: 'entryAmount', header: 'M.Entrada' }, { key: 'exitAmount', header: 'M.Salida' },
+      { key: 'days', header: 'Días' }, { key: 'pnlNominal', header: 'PNL $' },
+      { key: 'pnlPercent', header: 'PNL %' }, { key: 'tna', header: 'TNA' },
+      { key: 'broker', header: 'Broker' }, { key: 'account', header: 'Cuenta' },
+      { key: 'status', header: 'Estado' },
     ]);
-    downloadCSV(csv, `trades-${new Date().toISOString().split('T')[0]}.csv`);
+    downloadCSV(csv, `trade-units-${new Date().toISOString().split('T')[0]}.csv`);
   };
 
   // Filtering Logic
   const filteredList = useMemo(() => {
     let source: any[] = [];
-    if (view === "operations") source = operations;
-    else if (view === "trades") source = trades;
-    else if (view === "open") source = openPositions;
+    if (view === "transactions") source = executions;
+    else if (view === "trade-units") source = tradeUnits;
 
-    return source.filter((item: any) => {
-      // Trades abiertos siempre pasan el filtro de fecha (posición vigente)
-      const isOpenTrade = view === 'trades' && !item.isClosed;
-      if (!isOpenTrade) {
-        const rawDate = item.date ?? item.closeDate ?? item.openDate;
+    let list = source.filter((item: any) => {
+      // TradeUnits con status OPEN son inmunes al filtro de período
+      const isOpenTU = view === 'trade-units' && item.status === 'OPEN';
+      if (!isOpenTU) {
+        const rawDate = item.date ?? item.exitDate ?? item.entryDate;
         if (rawDate) {
           const itemDate = new Date(rawDate);
           if (!isWithinInterval(itemDate, activeInterval)) return false;
@@ -499,22 +508,101 @@ export default function Home() {
         if (!item.symbol?.toLowerCase().includes(term) && !item.broker?.toLowerCase().includes(term)) return false;
       }
 
-      if (view === 'operations') {
+      if (view === 'transactions') {
         if (brokerFilters.length > 0 && !brokerFilters.includes(item.broker)) return false;
-        if (cuentaFilters.length > 0 && !cuentaFilters.includes(item.cuenta)) return false;
+        if (cuentaFilters.length > 0 && !cuentaFilters.includes(item.account)) return false;
       }
 
-      if (view === 'trades') {
-        if (instrumentFilters.length > 0 && !instrumentFilters.includes(item.instrumentType)) return false;
-        if (tradeEstadoFilters.length > 0) {
-          const estado = item.isClosed ? 'Cerrados' : 'Abiertos';
-          if (!tradeEstadoFilters.includes(estado)) return false;
+      if (view === 'trade-units') {
+        if (instrumentFilters.length > 0 && !instrumentFilters.includes(getInstrumentType(item.symbol as string))) return false;
+        if (tuStatusFilter) {
+          if (item.status !== tuStatusFilter) return false;
         }
       }
 
       return true;
     });
-  }, [operations, trades, openPositions, view, activeInterval, searchQuery, brokerFilters, cuentaFilters, instrumentFilters, tradeEstadoFilters]);
+
+    // Sort trade-units detail view by entryDate desc
+    if (view === 'trade-units' && tuViewMode === 'detail') {
+      list = [...list].sort((a: any, b: any) => {
+        const da = a.entryDate instanceof Date ? a.entryDate : new Date(a.entryDate);
+        const db = b.entryDate instanceof Date ? b.entryDate : new Date(b.entryDate);
+        return db.getTime() - da.getTime();
+      });
+    }
+
+    return list;
+  }, [executions, tradeUnits, view, activeInterval, searchQuery, brokerFilters, cuentaFilters, instrumentFilters, tuStatusFilter, tuViewMode]);
+
+  // Trade Units grouped view
+  const tradeUnitsGrouped = useMemo(() => {
+    if (tuViewMode !== 'grouped') return null;
+
+    const getKey = (tu: any) => {
+      const parts: string[] = [];
+      if (groupBy.includes('symbol')) parts.push(tu.symbol);
+      if (groupBy.includes('account')) parts.push(tu.account ?? '');
+      if (groupBy.includes('broker')) parts.push(tu.broker ?? '');
+      return parts.join('::') || tu.symbol;
+    };
+
+    const groups: Record<string, any[]> = {};
+    const source = view === 'trade-units' ? filteredList : [];
+    source.forEach((tu: any) => {
+      const key = getKey(tu);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(tu);
+    });
+
+    return Object.values(groups).map(tus => {
+      const openTUs = tus.filter((tu: any) => tu.status === 'OPEN');
+      const netQty = openTUs.reduce((sum: number, tu: any) => sum + tu.qty, 0);
+      const totalEntryValue = openTUs.reduce((sum: number, tu: any) => sum + (tu.entryPrice * tu.qty), 0);
+      const avgEntryPrice = netQty > 0 ? totalEntryValue / netQty : 0;
+      const totalPnl = tus.reduce((sum: number, tu: any) => sum + (tu.pnlNominal ?? 0), 0);
+      const totalEntry = tus.reduce((sum: number, tu: any) => sum + tu.entryAmount, 0);
+      const totalPnlPct = totalEntry > 0 ? (totalPnl / totalEntry) * 100 : 0;
+      const lastExit = tus.filter((tu: any) => tu.exitPrice != null).sort((a: any, b: any) => {
+        const da = a.exitDate instanceof Date ? a.exitDate : new Date(a.exitDate ?? 0);
+        const db = b.exitDate instanceof Date ? b.exitDate : new Date(b.exitDate ?? 0);
+        return db.getTime() - da.getTime();
+      })[0];
+      const avgDays = tus.length > 0 ? Math.round(tus.reduce((s: number, tu: any) => s + (tu.days ?? 0), 0) / tus.length) : 0;
+      const rep = tus[0];
+      return {
+        id: `grp-${getKey(rep)}`,
+        symbol: rep.symbol,
+        side: rep.side,
+        account: groupBy.includes('account') ? rep.account : '(varios)',
+        broker: groupBy.includes('broker') ? rep.broker : '(varios)',
+        netQty,
+        avgEntryPrice,
+        lastExitPrice: lastExit?.exitPrice ?? null,
+        entryMarket: openTUs.reduce((s: number, tu: any) => s + (tu.entryAmount ?? 0), 0),
+        exitMarket: openTUs.reduce((s: number, tu: any) => s + (tu.exitAmount ?? tu.entryAmount ?? 0), 0),
+        avgDays,
+        pnlNominal: totalPnl,
+        pnlPercent: totalPnlPct,
+        tna: tus.reduce((s: number, tu: any) => s + (tu.tna ?? 0), 0) / (tus.length || 1),
+        count: tus.length,
+        openCount: openTUs.length,
+        status: openTUs.length > 0 ? 'OPEN' : 'CLOSED',
+        _children: tus,
+        _isGrouped: true,
+      };
+    }).sort((a: any, b: any) => {
+      const va = a[groupedSortKey];
+      const vb = b[groupedSortKey];
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      let cmp = 0;
+      if (typeof va === 'string') cmp = va.localeCompare(String(vb));
+      else cmp = Number(va) - Number(vb);
+      return groupedSortDir === 'asc' ? cmp : -cmp;
+    });
+  }, [tuViewMode, groupBy, filteredList, view, groupedSortKey, groupedSortDir]);
 
   // Filtered cashflows para vista movimientos
   const filteredCashFlows = useMemo(() => {
@@ -535,40 +623,41 @@ export default function Home() {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [cashFlows, activeInterval, searchQuery]);
 
-  // Column definitions — orden exacto según requirements.md
-  // Operations: ID, Fecha, Símbolo, Cantidad, Precio, Monto, Broker, Falopa, Intra
-  const operationColumns: ColumnDef<any>[] = [
+  // Column definitions
+  // Executions: ID, Fecha, SÍMBOLO, LADO(side), CANT(qty), PRECIO, MONTO, BROKER, CUENTA(account), MONEDA(currency), COMIS(commissions), FALOPA, INTRA
+  const executionColumns: ColumnDef<any>[] = [
     { key: "id", header: "ID", align: "right", sortable: true },
     { key: "date", header: "Fecha", align: "center", sortable: true, render: (v) => v ? new Date(v as Date).toLocaleDateString("es-AR") : "-" },
     { key: "symbol", header: "Símbolo", sortable: true, render: (v) => <span className="px-1.5 py-0.5 bg-white/5 text-zinc-200 rounded text-[10px] font-black border border-white/10">{String(v)}</span> },
-    { key: "type", header: "Tipo", align: "center", render: (v) => <span className={cn("text-[10px] font-black uppercase", v === "BUY" ? "text-emerald-500" : "text-red-500")}>{String(v)}</span> },
-    { key: "quantity", header: "Cantidad", align: "right", sortable: true },
+    { key: "side", header: "Lado", align: "center", render: (v) => <span className={cn("text-[10px] font-black uppercase", v === "BUY" ? "text-emerald-500" : "text-red-500")}>{String(v)}</span> },
+    { key: "qty", header: "Cant.", align: "right", sortable: true },
     { key: "price", header: "Precio", align: "right", sortable: true, render: (v) => `$${Number(v).toFixed(2)}` },
     { key: "amount", header: "Monto", align: "right", sortable: true, render: (v) => `$${Math.round(Number(v)).toLocaleString()}` },
-    { key: "isFalopa", header: "Falopa", align: "center", render: (v) => v ? <span className="text-orange-400 font-bold text-[10px]">SÍ</span> : <span className="text-zinc-600 text-[10px]">—</span> },
-    { key: "isIntra", header: "Intra", align: "center", render: (v) => v ? <span className="text-purple-400 font-bold text-[10px]">SÍ</span> : <span className="text-zinc-600 text-[10px]">—</span> },
     { key: "broker", header: "Broker", align: "center", sortable: true },
-    { key: "cuenta", header: "Cuenta", align: "center", sortable: true },
+    { key: "account", header: "Cuenta", align: "center", sortable: true },
+    { key: "currency", header: "Moneda", align: "center", sortable: true },
+    { key: "commissions", header: "Comis.", align: "right", sortable: true, render: (v) => v ? `$${Number(v).toFixed(2)}` : <span className="text-zinc-600">—</span> },
   ];
 
-  // Trades: ID, F.Entrada, Símbolo, Cantidad, P.Entrada, M.Entrada, P.Salida, M.Salida, F.Salida, Días, Rdto$, Rdto%, TNA, Broker, Estado
-  const tradeColumns: ColumnDef<any>[] = [
-    { key: "id", header: "ID", align: "right", sortable: true },
-    { key: "openDate", header: "F.Entrada", align: "center", sortable: true, render: (v) => v ? new Date(v as Date).toLocaleDateString("es-AR") : "-" },
-    { key: "symbol", header: "Símbolo", sortable: true, render: (v) => <span className="px-1.5 py-0.5 bg-white/5 text-zinc-200 rounded text-[10px] font-black border border-white/10">{String(v)}</span> },
-    { key: "quantity", header: "Cantidad", align: "right", sortable: true },
-    { key: "openPrice", header: "P.Entrada", align: "right", sortable: true, render: (v) => `$${Number(v).toFixed(2)}` },
-    { key: "openAmount", header: "M.Entrada", align: "right", sortable: true, render: (v) => `$${Math.round(Number(v)).toLocaleString()}` },
-    { key: "closePrice", header: "P.Salida", align: "right", sortable: true, render: (v) => v != null ? `$${Number(v).toFixed(2)}` : <span className="text-zinc-600">—</span> },
-    { key: "closeAmount", header: "M.Salida", align: "right", sortable: true, render: (v) => v != null ? `$${Math.round(Number(v)).toLocaleString()}` : <span className="text-zinc-600">—</span> },
-    { key: "closeDate", header: "F.Salida", align: "center", sortable: true, render: (v) => v ? new Date(v as Date).toLocaleDateString("es-AR") : <span className="text-zinc-600">—</span> },
-    { key: "days", header: "Días", align: "center", sortable: true },
-    { key: "returnAmount", header: "Rdto $", align: "right", sortable: true, render: (v) => <span className={cn("font-black", Number(v) >= 0 ? "text-emerald-400" : "text-red-400")}>${Math.round(Number(v)).toLocaleString()}</span> },
-    { key: "returnPercent", header: "Rdto %", align: "right", sortable: true, render: (v) => <span className={cn("font-bold", Number(v) >= 0 ? "text-emerald-500" : "text-red-500")}>{Number(v).toFixed(1)}%</span> },
-    { key: "tna", header: "TNA", align: "right", sortable: true, render: (v) => `${Number(v ?? 0).toFixed(1)}%` },
-    { key: "isClosed", header: "Estado", align: "center", render: (v) => <span className={cn("text-[10px] font-bold uppercase px-1.5 py-0.5 rounded", v ? "bg-zinc-700 text-zinc-400" : "bg-blue-900/30 text-blue-400")}>{v ? "CERRADO" : "ABIERTO"}</span> },
-    { key: "broker", header: "Broker", align: "center", sortable: true },
-    { key: "cuenta", header: "Cuenta", align: "center", sortable: true },
+  // TradeUnits: ID, F.ENTRADA, F.SALIDA, SÍMBOLO, LADO, CANT(qty), P.ENTRADA(entryPrice), P.SALIDA(exitPrice), M.ENTRADA(entryAmount), M.SALIDA(exitAmount), DÍAS, PNL $(pnlNominal), PNL %(pnlPercent), TNA, BROKER, CUENTA(account), ESTADO(status)
+  const tradeUnitColumns: ColumnDef<any>[] = [
+    { key: "id", header: "ID", align: "right", sortable: true, render: (v) => <span className="text-zinc-400">{String(v)}</span> },
+    { key: "entryDate", header: "F.Entrada", align: "center", sortable: true, render: (v: any) => { const d = v instanceof Date ? v : new Date(String(v)); return isNaN(d.getTime()) ? '—' : <span className="whitespace-nowrap text-zinc-400">{format(d, 'dd/MM/yyyy HH:mm')}</span>; } },
+    { key: "exitDate", header: "F.Salida", align: "center", sortable: true, render: (v: any) => { if (!v) return <span className="text-zinc-600">—</span>; const d = v instanceof Date ? v : new Date(String(v)); return isNaN(d.getTime()) ? '—' : <span className="whitespace-nowrap text-zinc-400">{format(d, 'dd/MM/yyyy HH:mm')}</span>; } },
+    { key: "symbol", header: "Símbolo", sortable: true, render: (v) => <span className="px-1.5 py-0.5 bg-white/5 text-zinc-400 rounded text-[10px] font-black border border-white/10">{String(v)}</span> },
+    { key: "side", header: "Lado", align: "center", render: (v) => <span className={cn("text-[10px] font-black uppercase", v === "BUY" ? "text-emerald-500" : "text-red-500")}>{String(v)}</span> },
+    { key: "qty", header: "Cant.", align: "right", sortable: true, render: (v) => <span className="text-zinc-400">{String(v)}</span> },
+    { key: "entryPrice", header: "P.Entrada", align: "right", sortable: true, render: (v) => <span className="text-zinc-400">${Number(v).toFixed(2)}</span> },
+    { key: "exitPrice", header: "P.Salida", align: "right", sortable: true, render: (v) => v != null ? <span className="text-zinc-400">${Number(v).toFixed(2)}</span> : <span className="text-zinc-600">—</span> },
+    { key: "entryAmount", header: "M.Entrada", align: "right", sortable: true, render: (v) => <span className="text-zinc-400">${Math.round(Number(v)).toLocaleString()}</span> },
+    { key: "exitAmount", header: "M.Salida", align: "right", sortable: true, render: (v) => v != null ? <span className="text-zinc-400">${Math.round(Number(v)).toLocaleString()}</span> : <span className="text-zinc-600">—</span> },
+    { key: "days", header: "Días", align: "center", sortable: true, render: (v) => <span className="text-zinc-400">{String(v)}</span> },
+    { key: "pnlNominal", header: "PNL $", align: "right", sortable: true, render: (v) => <span className={cn("font-black", Number(v) >= 0 ? "text-emerald-400" : "text-red-400")}>{Math.round(Number(v)).toLocaleString()}</span> },
+    { key: "pnlPercent", header: "PNL %", align: "right", sortable: true, render: (v) => <span className={cn("font-bold", Number(v) >= 0 ? "text-emerald-500" : "text-red-500")}>{Number(v).toFixed(1)}%</span> },
+    { key: "tna", header: "TNA", align: "right", sortable: true, render: (v) => <span className="text-zinc-400">{Number(v ?? 0).toFixed(1)}%</span> },
+    { key: "status", header: "Estado", align: "center", render: (v) => <span className={cn("text-[10px] font-bold uppercase px-1.5 py-0.5 rounded", v === 'CLOSED' ? "bg-zinc-700 text-zinc-400" : "bg-blue-900/30 text-blue-400")}>{v === 'CLOSED' ? "CERRADO" : "ABIERTO"}</span> },
+    { key: "broker", header: "Broker", align: "center", sortable: true, render: (v) => <span className="text-zinc-400">{String(v)}</span> },
+    { key: "account", header: "Cuenta", align: "center", sortable: true, render: (v) => <span className="text-zinc-400">{String(v)}</span> },
   ];
 
   // Movimientos (CashFlow): Fecha, Tipo, Monto, Broker, Cuenta, Descripción
@@ -604,9 +693,8 @@ export default function Home() {
             {[
               { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
               { id: "analytics", label: "Analytics", icon: Activity },
-              { id: "open", label: "Posiciones", icon: Layers },
-              { id: "trades", label: "Trades", icon: History },
-              { id: "operations", label: "Operaciones", icon: List },
+              { id: "trade-units", label: "Trades", icon: History },
+              { id: "transactions", label: "Transacciones", icon: List },
               { id: "cuentas", label: "Cuentas", icon: Briefcase },
               { id: "brokers", label: "Brokers", icon: Wallet },
             ].map((t) => (
@@ -630,12 +718,19 @@ export default function Home() {
               Dep / Ret
             </button>
             <button
-              onClick={() => { setEditingOperation(null); navigateTo("nueva-op"); }}
+              onClick={() => { setEditingExecution(null); navigateTo("nueva-trans"); }}
               className={cn("flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all",
-                view === "nueva-op" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300")}
+                view === "nueva-trans" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300")}
             >
               <Plus className="w-3.5 h-3.5" />
-              Nueva Op.
+              Nueva Trans.
+            </button>
+            <div className="w-px h-4 bg-white/10 mx-1" />
+            <button onClick={() => setView("configuraciones")}
+              className={cn("flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all",
+                view === "configuraciones" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300")}>
+              <Settings className="w-3.5 h-3.5" />
+              Config.
             </button>
           </div>
         </div>
@@ -653,6 +748,8 @@ export default function Home() {
           closeDate={closeModalData.closeDate}
           broker={closeModalData.broker}
           openOperations={closeModalData.openOps}
+          strategy={closeModalData.strategy}
+          onStrategyChange={(s) => setCloseModalData(prev => prev ? { ...prev, strategy: s } : null)}
           onConfirm={handleConfirmClose}
           onCancel={() => setCloseModalData(null)}
         />
@@ -668,8 +765,8 @@ export default function Home() {
 
       <main className="p-6 max-w-[1600px] mx-auto space-y-6">
 
-        {/* Filter Bar — oculto en vista Cuentas, Nueva Op y I/E */}
-        {view !== "cuentas" && view !== "brokers" && view !== "nueva-op" && view !== "ie" && (
+        {/* Filter Bar — oculto en vista Cuentas, Nueva Exec, I/E y Configuraciones */}
+        {view !== "cuentas" && view !== "brokers" && view !== "nueva-trans" && view !== "ie" && view !== "configuraciones" && (
           <FilterBar
             dateFilter={dateFilter}
             onDateFilterChange={setDateFilter}
@@ -760,13 +857,12 @@ export default function Home() {
                   ${Math.round(totalMarketValue).toLocaleString()}
                 </h2>
                 <div className="flex gap-6 mt-4">
-                  <div><p className="text-[9px] font-bold text-zinc-500 uppercase">Posiciones</p><p className="text-sm font-bold text-emerald-400">{openPositions.length}</p></div>
+                  <div><p className="text-[9px] font-bold text-zinc-500 uppercase">Trade Units Abiertas</p><p className="text-sm font-bold text-emerald-400">{tradeUnits.filter((t: any) => t.status === 'OPEN').length}</p></div>
                 </div>
               </div>
             </div>
 
             {/* Yields Grid / Calendar */}
-            {/* Month names for CalendarGrid titles */}
             <div className="space-y-4">
               {isCalendarMode && calendarData ? (
                 <div className="space-y-6">
@@ -818,7 +914,7 @@ export default function Home() {
             {/* Summary MetricCards */}
             {summary && (
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <MetricCard title="Operaciones Abiertas" value={String(summary.openOperations)} subtitle="posiciones activas" accentColor="blue" />
+                <MetricCard title="Ejecuciones Abiertas" value={String(summary.openOperations)} subtitle="posiciones activas" accentColor="blue" />
                 <MetricCard title="Trades Cerrados" value={String(summary.totalTrades)} subtitle={`${summary.positiveTrades} ganadoras`} accentColor="emerald" />
                 <MetricCard title="Tasa de Victorias" value={`${stats.winRate.toFixed(1)}%`} subtitle="trades positivos" accentColor={stats.winRate >= 50 ? "emerald" : "orange"} />
                 <MetricCard title="Tamaño Promedio" value={summary.avgTradeSize > 0 ? `$${Math.round(summary.avgTradeSize).toLocaleString()}` : "$0"} subtitle="monto promedio" accentColor="purple" />
@@ -849,7 +945,7 @@ export default function Home() {
             {topStats?.top5Trades && topStats.top5Trades.length > 0 && (
               <div className="bg-zinc-900/50 rounded-lg border border-white/5 overflow-hidden">
                 <div className="px-4 py-2 border-b border-white/5 bg-zinc-900/30">
-                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">🏆 Top 5 Trades</span>
+                  <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-400">🏆 Top 5 Trade Units</span>
                 </div>
                 <table className="w-full border-collapse">
                   <thead>
@@ -866,10 +962,10 @@ export default function Home() {
                     {topStats.top5Trades.map((t: any, i: number) => (
                       <tr key={i} className="hover:bg-white/[0.03] h-8 text-[12px]">
                         <td className="py-1 px-4 font-extrabold text-zinc-200">{t.symbol}</td>
-                        <td className="py-1 px-4 text-center text-zinc-500">{t.openDate ? new Date(t.openDate).toLocaleDateString("es-AR") : "-"}</td>
-                        <td className="py-1 px-4 text-center text-zinc-500">{t.closeDate ? new Date(t.closeDate).toLocaleDateString("es-AR") : "-"}</td>
-                        <td className={cn("py-1 px-4 text-right font-black", t.returnAmount >= 0 ? "text-emerald-400" : "text-red-400")}>${Math.round(t.returnAmount).toLocaleString()}</td>
-                        <td className={cn("py-1 px-4 text-right font-bold", t.returnPercent >= 0 ? "text-emerald-500" : "text-red-500")}>{t.returnPercent.toFixed(1)}%</td>
+                        <td className="py-1 px-4 text-center text-zinc-500">{t.entryDate ? new Date(t.entryDate).toLocaleDateString("es-AR") : "-"}</td>
+                        <td className="py-1 px-4 text-center text-zinc-500">{t.exitDate ? new Date(t.exitDate).toLocaleDateString("es-AR") : "-"}</td>
+                        <td className={cn("py-1 px-4 text-right font-black", t.pnlNominal >= 0 ? "text-emerald-400" : "text-red-400")}>${Math.round(t.pnlNominal).toLocaleString()}</td>
+                        <td className={cn("py-1 px-4 text-right font-bold", t.pnlPercent >= 0 ? "text-emerald-500" : "text-red-500")}>{t.pnlPercent.toFixed(1)}%</td>
                         <td className="py-1 px-4 text-right text-zinc-400">{t.tna.toFixed(1)}%</td>
                       </tr>
                     ))}
@@ -878,7 +974,7 @@ export default function Home() {
               </div>
             )}
 
-            {/* Mejor Mes y Mejor Trade */}
+            {/* Mejor Mes y Mejor Trade Unit */}
             {topStats && (topStats.bestMonth || topStats.bestReturnTrade) && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {topStats.bestMonth && (
@@ -890,9 +986,9 @@ export default function Home() {
                 )}
                 {topStats.bestReturnTrade && (
                   <div className="bg-zinc-900/50 rounded-lg border border-white/5 p-4">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">🏆 Mejor Trade</p>
-                    <p className="text-2xl font-black text-emerald-400">{topStats.bestReturnTrade.returnPercent.toFixed(1)}%</p>
-                    <p className="text-[11px] text-zinc-500 mt-1">{topStats.bestReturnTrade.symbol} · ${Math.round(topStats.bestReturnTrade.returnAmount).toLocaleString()}</p>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">🏆 Mejor Trade Unit</p>
+                    <p className="text-2xl font-black text-emerald-400">{topStats.bestReturnTrade.pnlPercent.toFixed(1)}%</p>
+                    <p className="text-[11px] text-zinc-500 mt-1">{topStats.bestReturnTrade.symbol} · ${Math.round(topStats.bestReturnTrade.pnlNominal).toLocaleString()}</p>
                   </div>
                 )}
               </div>
@@ -987,7 +1083,7 @@ export default function Home() {
                 </div>
               </div>
             )}
-            {/* Gráficos de Torta — Tenencia por tipo y por cuenta */}
+            {/* Gráficos de Torta */}
             {(pieByInstrument.length > 0 || pieByCuenta.length > 0 || pieByBroker.length > 0) && (
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {pieByInstrument.length > 0 && (
@@ -1010,12 +1106,12 @@ export default function Home() {
           </div>
         )}
 
-        {/* --- LIST VIEWS (Operations, Trades, Open) --- */}
-        {(view === "operations" || view === "trades" || view === "open") && (
+        {/* --- LIST VIEWS (Transactions, TradeUnits) --- */}
+        {(view === "transactions" || view === "trade-units") && (
           <div className="space-y-4 animate-in fade-in duration-500">
 
-            {/* Filtros extra para operaciones */}
-            {view === "operations" && (
+            {/* Filtros extra para transacciones */}
+            {view === "transactions" && (
               <div className="flex flex-wrap items-center gap-2">
                 <DropdownMultiCheck
                   label="Broker"
@@ -1033,15 +1129,29 @@ export default function Home() {
               </div>
             )}
 
-            {/* Filtros extra para trades */}
-            {view === "trades" && (
-              <div className="flex flex-wrap items-center gap-2">
-                <DropdownMultiCheck
-                  label="Estado"
-                  options={["Abiertos", "Cerrados"]}
-                  selected={tradeEstadoFilters}
-                  onChange={setTradeEstadoFilters}
-                />
+            {/* Filtros extra para trade units */}
+            {view === "trade-units" && (
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] text-zinc-500 uppercase tracking-wider mr-1">Estado:</span>
+                  {[
+                    { value: '', label: 'Todos' },
+                    { value: 'OPEN', label: 'Abiertos' },
+                    { value: 'CLOSED', label: 'Cerrados' },
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => setTuStatusFilter(opt.value)}
+                      className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                        tuStatusFilter === opt.value
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-zinc-800 text-zinc-400 hover:text-zinc-200'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
                 <DropdownMultiCheck
                   label="Instrumento"
                   options={["STOCK", "CEDEAR", "CRYPTO"]}
@@ -1051,129 +1161,227 @@ export default function Home() {
               </div>
             )}
 
-            {/* Open Positions: tabla inline */}
-            {view === "open" && (() => {
-              const totalOpen = filteredList.length;
-              const pageCount = openPageSize === 0 ? 1 : Math.ceil(totalOpen / openPageSize);
-              const paginated = openPageSize === 0 ? filteredList : filteredList.slice((openPage - 1) * openPageSize, openPage * openPageSize);
-              return (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-zinc-500 font-medium">{totalOpen} posición{totalOpen !== 1 ? "es" : ""}</span>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] text-zinc-600 uppercase font-bold mr-1">Mostrar</span>
-                      {[25, 50, 100, 0].map(n => (
-                        <button key={n} onClick={() => { setOpenPageSize(n); setOpenPage(1); }}
-                          className={cn("px-2.5 py-1 rounded text-[10px] font-bold transition-all", openPageSize === n ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>
-                          {n === 0 ? "Todos" : n}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="bg-zinc-900/50 rounded-2xl border border-white/5 overflow-hidden shadow-2xl">
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-left border-collapse">
-                        <thead>
-                          <tr className="bg-white/5 text-[10px] font-black uppercase tracking-widest text-zinc-500 border-b border-white/5">
-                            <th className="py-3 px-4 text-center">Fecha</th>
-                            <th className="py-3 px-4 text-center">Símbolo</th>
-                            <th className="py-3 px-4 text-right">Cantidad</th>
-                            <th className="py-3 px-4 text-right">P.Entrada</th>
-                            <th className="py-3 px-4 text-right">P.Actual</th>
-                            <th className="py-3 px-4 text-right">P&amp;L Latente</th>
-                            <th className="py-3 px-4 text-center">Broker</th>
-                            <th className="py-3 px-4 text-center">Cuenta</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                          {paginated.map((item: any) => (
-                            <tr key={item.id} className="group hover:bg-white/[0.03] transition-colors h-[34px] text-[12px]">
-                              <td className="py-0 px-4 text-center text-zinc-500 font-medium whitespace-nowrap">
-                                {format(new Date(item.date ?? item.openDate), "dd/MM/yyyy")}
-                              </td>
-                              <td className="py-0 px-4 text-center">
-                                <span className="px-1.5 py-0.5 bg-white/5 text-zinc-300 rounded text-[10px] font-black uppercase tracking-tighter border border-white/10">
-                                  {item.symbol}
-                                </span>
-                              </td>
-                              <td className="py-0 px-4 text-right font-bold text-white">{item.quantity}</td>
-                              <td className="py-0 px-4 text-right text-zinc-400">${item.openPrice?.toFixed(2)}</td>
-                              <td className="py-0 px-4 text-right text-zinc-200">${item.currentPrice?.toFixed(2)}</td>
-                              <td className={cn("py-0 px-4 text-right font-black", item.unrealizedPL >= 0 ? "text-emerald-400" : "text-red-400")}>
-                                ${Math.round(item.unrealizedPL).toLocaleString()} <span className="text-[10px] opacity-70">({item.unrealizedPLPercent?.toFixed(1)}%)</span>
-                              </td>
-                              <td className="py-0 px-4 text-center font-bold text-zinc-500">{item.broker}</td>
-                              <td className="py-0 px-4 text-center font-bold text-zinc-500">{item.cuenta ?? 'USA'}</td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-                  {openPageSize > 0 && pageCount > 1 && (
-                    <div className="flex items-center justify-center gap-1">
-                      {Array.from({ length: pageCount }, (_, i) => i + 1).map(p => (
-                        <button key={p} onClick={() => setOpenPage(p)}
-                          className={cn("w-7 h-7 rounded text-[11px] font-bold transition-all", openPage === p ? "bg-zinc-700 text-white" : "text-zinc-500 hover:text-zinc-300")}>
-                          {p}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Operations DataTable */}
-            {view === "operations" && (
+            {/* Transactions DataTable */}
+            {view === "transactions" && (
               <DataTable
                 data={filteredList}
-                columns={operationColumns}
-                emptyMessage="Sin operaciones para el período seleccionado"
-                onView={handleViewOp}
-                onEdit={handleEditOp}
-                onDelete={handleDeleteOp}
-                onExport={handleExportOperations}
+                columns={executionColumns}
+                emptyMessage="Sin transacciones para el período seleccionado"
+                onView={handleViewExecution}
+                onEdit={handleEditExecution}
+                onDelete={handleDeleteExecution}
+                onExport={handleExportExecutions}
               />
             )}
 
-            {/* Trades DataTable */}
-            {view === "trades" && (
-              <DataTable
-                data={filteredList}
-                columns={tradeColumns}
-                emptyMessage="Sin trades para el período seleccionado"
-                onView={handleViewTrade}
-                onEdit={handleEditTrade}
-                onDelete={handleDeleteTrade}
-                onExport={handleExportTrades}
-              />
+            {/* TradeUnits view */}
+            {view === "trade-units" && (
+              <>
+                {/* Toggle Desagregada / Agregada */}
+                <div className="flex items-center gap-3 mb-2">
+                  <div className="flex gap-1 bg-zinc-800/50 rounded-lg p-1">
+                    <button
+                      onClick={() => setTuViewMode('grouped')}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${tuViewMode === 'grouped' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                    >
+                      Agrupar
+                    </button>
+                    <button
+                      onClick={() => setTuViewMode('detail')}
+                      className={`px-3 py-1 text-xs rounded-md transition-colors ${tuViewMode === 'detail' ? 'bg-blue-600 text-white' : 'text-zinc-400 hover:text-zinc-200'}`}
+                    >
+                      Desagrupar
+                    </button>
+                  </div>
+
+                  {tuViewMode === 'grouped' && (
+                    <DropdownMultiCheck
+                      label="Agrupar por"
+                      options={['Símbolo', 'Cuenta', 'Broker']}
+                      selected={groupBy.map(v => v === 'symbol' ? 'Símbolo' : v === 'account' ? 'Cuenta' : v === 'broker' ? 'Broker' : v)}
+                      onChange={(newSelected: string[]) => {
+                        const toKey = (v: string) => v === 'Símbolo' ? 'symbol' : v === 'Cuenta' ? 'account' : v === 'Broker' ? 'broker' : v;
+                        setGroupBy(newSelected.map(toKey));
+                      }}
+                      allLabel="Todos"
+                      allSelectsAll
+                    />
+                  )}
+                </div>
+
+                {tuViewMode === 'grouped' && tradeUnitsGrouped ? (() => {
+                  const pagedGrouped = groupedShowAll ? tradeUnitsGrouped : tradeUnitsGrouped.slice(0, groupedPageSize);
+                  return (
+                  <div className="bg-zinc-900/50 rounded-lg border border-white/5 overflow-hidden">
+                    {/* Metadata bar */}
+                    <div className="flex items-center justify-between px-4 py-2 border-b border-white/5 bg-zinc-900/30">
+                      <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-500">{tradeUnitsGrouped.length} REGISTROS</span>
+                      <div className="flex items-center gap-1">
+                        {[25, 50, 100].map(n => (
+                          <button key={n} onClick={() => { setGroupedPageSize(n); setGroupedShowAll(false); }}
+                            className={cn("px-2 py-0.5 rounded text-[10px] font-bold transition-all", !groupedShowAll && groupedPageSize === n ? "bg-blue-600 text-white" : "text-zinc-500 hover:text-zinc-300")}>
+                            {n}
+                          </button>
+                        ))}
+                        <button onClick={() => setGroupedShowAll(true)}
+                          className={cn("px-2 py-0.5 rounded text-[10px] font-bold transition-all", groupedShowAll ? "bg-blue-600 text-white" : "text-zinc-500 hover:text-zinc-300")}>
+                          Todos
+                        </button>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-white/[0.03] border-b border-white/5">
+                          <th className="w-8 px-2 py-2"></th>
+                          {([
+                            { key: 'symbol', label: 'SÍMBOLO', align: 'text-left' },
+                            { key: '_entryDate', label: 'F.ENTRADA', align: 'text-center' },
+                            { key: '_exitDate', label: 'F.SALIDA', align: 'text-center' },
+                            { key: 'side', label: 'LADO', align: 'text-center' },
+                            { key: 'netQty', label: 'CANT', align: 'text-right' },
+                            { key: 'avgEntryPrice', label: 'P.ENTRADA', align: 'text-right' },
+                            { key: 'lastExitPrice', label: 'P.SALIDA', align: 'text-right' },
+                            { key: 'entryMarket', label: 'M.ENTRADA', align: 'text-right' },
+                            { key: 'exitMarket', label: 'M.SALIDA', align: 'text-right' },
+                            { key: 'avgDays', label: 'DÍAS', align: 'text-center' },
+                            { key: 'pnlNominal', label: 'PNL $', align: 'text-right' },
+                            { key: 'pnlPercent', label: 'PNL %', align: 'text-right' },
+                            { key: 'tna', label: 'TNA', align: 'text-right' },
+                            { key: 'status', label: 'ESTADO', align: 'text-center' },
+                            { key: 'broker', label: 'BROKER', align: 'text-center' },
+                            { key: 'account', label: 'CUENTA', align: 'text-center' },
+                          ] as { key: string; label: string; align: string }[]).map(col => (
+                            <th
+                              key={col.key}
+                              onClick={() => {
+                                if (groupedSortKey === col.key) setGroupedSortDir(d => d === 'asc' ? 'desc' : 'asc');
+                                else { setGroupedSortKey(col.key); setGroupedSortDir('asc'); }
+                              }}
+                              className={`px-3 py-2 text-[10px] font-bold uppercase text-zinc-500 tracking-widest cursor-pointer hover:text-zinc-300 select-none whitespace-nowrap ${col.align}`}
+                            >
+                              <span className="inline-flex items-center gap-1">
+                                {col.label}
+                                {groupedSortKey === col.key ? (groupedSortDir === 'asc' ? <span className="text-blue-400">↑</span> : <span className="text-blue-400">↓</span>) : <span className="opacity-30">↕</span>}
+                              </span>
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-white/[0.04]">
+                        {pagedGrouped.map((row) => (
+                          <React.Fragment key={row.id}>
+                            <tr className="group hover:bg-white/[0.03] transition-colors h-8">
+                              <td className="px-2 py-1 text-center">
+                                <button
+                                  onClick={() => {
+                                    const newSet = new Set(expandedGroups);
+                                    if (newSet.has(row.id)) newSet.delete(row.id);
+                                    else newSet.add(row.id);
+                                    setExpandedGroups(newSet);
+                                  }}
+                                  className="w-5 h-5 rounded border border-zinc-600 text-zinc-400 hover:text-zinc-200 hover:border-zinc-400 text-xs flex items-center justify-center transition-colors"
+                                >
+                                  {expandedGroups.has(row.id) ? '−' : '+'}
+                                </button>
+                              </td>
+                              <td className="px-3 py-1 text-[13px]"><span className="px-1.5 py-0.5 bg-white/5 text-zinc-400 rounded text-[10px] font-black border border-white/10">{row.symbol}</span></td>
+                              <td className="px-3 py-1 text-[13px] text-center text-zinc-600">—</td>
+                              <td className="px-3 py-1 text-[13px] text-center text-zinc-600">—</td>
+                              <td className="px-3 py-1 text-[13px] text-center"><span className={cn("text-[10px] font-black uppercase", row.side === 'BUY' ? 'text-emerald-500' : 'text-red-500')}>{row.side}</span></td>
+                              <td className="px-3 py-1 text-[13px] text-right text-zinc-400">{row.netQty}</td>
+                              <td className="px-3 py-1 text-[13px] text-right text-zinc-400">{Number(row.avgEntryPrice).toFixed(2)}</td>
+                              <td className="px-3 py-1 text-[13px] text-right text-zinc-400">{row.lastExitPrice != null ? Number(row.lastExitPrice).toFixed(2) : <span className="text-zinc-600">—</span>}</td>
+                              <td className="px-3 py-1 text-[13px] text-right text-zinc-400">{Math.round(row.entryMarket).toLocaleString()}</td>
+                              <td className="px-3 py-1 text-[13px] text-right text-zinc-400">{Math.round(row.exitMarket).toLocaleString()}</td>
+                              <td className="px-3 py-1 text-[13px] text-center text-zinc-400">{row.avgDays}</td>
+                              <td className="px-3 py-1 text-[13px] text-right"><span className={cn("font-black", row.pnlNominal >= 0 ? 'text-emerald-400' : 'text-red-400')}>{Math.round(row.pnlNominal).toLocaleString()}</span></td>
+                              <td className="px-3 py-1 text-[13px] text-right"><span className={cn("font-bold", row.pnlPercent >= 0 ? 'text-emerald-400' : 'text-red-400')}>{Number(row.pnlPercent).toFixed(2)}%</span></td>
+                              <td className="px-3 py-1 text-[13px] text-right text-zinc-400">{Number(row.tna ?? 0).toFixed(1)}%</td>
+                              <td className="px-3 py-1 text-[13px] text-center"><span className={cn("text-[10px] font-bold uppercase px-1.5 py-0.5 rounded", row.status === 'CLOSED' ? "bg-zinc-700 text-zinc-400" : "bg-blue-900/30 text-blue-400")}>{row.status === 'CLOSED' ? 'CERRADO' : 'ABIERTO'}</span></td>
+                              <td className="px-3 py-1 text-[13px] text-center text-zinc-400">{row.broker}</td>
+                              <td className="px-3 py-1 text-[13px] text-center text-zinc-400">{row.account}</td>
+                            </tr>
+                            {expandedGroups.has(row.id) && row._children?.map((child: any) => (
+                              <tr key={child.id} className="bg-zinc-950/50 border-b border-white/[0.02] text-[12px]">
+                                <td className="px-2 py-1.5"></td>
+                                <td className="px-3 py-1.5 text-zinc-500">#{child.id}</td>
+                                <td className="px-3 py-1.5 text-center text-zinc-500 whitespace-nowrap">{child.entryDate ? format(child.entryDate instanceof Date ? child.entryDate : new Date(child.entryDate), 'dd/MM/yyyy HH:mm') : '—'}</td>
+                                <td className="px-3 py-1.5 text-center text-zinc-500 whitespace-nowrap">{child.exitDate ? format(child.exitDate instanceof Date ? child.exitDate : new Date(child.exitDate), 'dd/MM/yyyy HH:mm') : <span className="text-zinc-600">—</span>}</td>
+                                <td className="px-3 py-1.5 text-center"><span className={cn("text-[10px] font-black uppercase", child.side === 'BUY' ? 'text-emerald-600' : 'text-red-600')}>{child.side}</span></td>
+                                <td className="px-3 py-1.5 text-right text-zinc-400">{child.qty}</td>
+                                <td className="px-3 py-1.5 text-right text-zinc-500">{Number(child.entryPrice).toFixed(2)}</td>
+                                <td className="px-3 py-1.5 text-right text-zinc-500">{child.exitPrice != null ? Number(child.exitPrice).toFixed(2) : '—'}</td>
+                                <td className="px-3 py-1.5 text-right text-zinc-500">{Math.round(child.entryAmount).toLocaleString()}</td>
+                                <td className="px-3 py-1.5 text-right text-zinc-500">{child.exitAmount != null ? Math.round(child.exitAmount).toLocaleString() : '—'}</td>
+                                <td className="px-3 py-1.5 text-center text-zinc-500">{child.days}</td>
+                                <td className="px-3 py-1.5 text-right"><span className={cn("font-bold", child.pnlNominal >= 0 ? 'text-emerald-500' : 'text-red-500')}>{Math.round(child.pnlNominal).toLocaleString()}</span></td>
+                                <td className="px-3 py-1.5 text-right"><span className={cn(child.pnlPercent >= 0 ? 'text-emerald-500' : 'text-red-500')}>{Number(child.pnlPercent).toFixed(2)}%</span></td>
+                                <td className="px-3 py-1.5 text-right text-zinc-500">{Number(child.tna ?? 0).toFixed(1)}%</td>
+                                <td className="px-3 py-1.5 text-center"><span className={cn("text-[10px] font-bold uppercase px-1.5 py-0.5 rounded", child.status === 'CLOSED' ? "bg-zinc-800 text-zinc-500" : "bg-blue-900/20 text-blue-500")}>{child.status === 'CLOSED' ? 'CERRADO' : 'ABIERTO'}</span></td>
+                                <td className="px-3 py-1.5 text-center text-zinc-500">{child.broker}</td>
+                                <td className="px-3 py-1.5 text-center text-zinc-500">{child.account}</td>
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        ))}
+                      </tbody>
+                    </table>
+                    </div>
+                  </div>
+                  );
+                })() : (
+                  <DataTable
+                    data={filteredList}
+                    columns={tradeUnitColumns}
+                    emptyMessage="Sin trade units para el período seleccionado"
+                    onView={handleViewTradeUnit}
+                    onEdit={handleEditTradeUnit}
+                    onDelete={handleDeleteTradeUnit}
+                    onExport={handleExportTradeUnits}
+                  />
+                )}
+              </>
             )}
           </div>
         )}
 
-        {/* --- NUEVA OPERACIÓN VIEW --- */}
-        {view === "nueva-op" && (
+        {/* --- NUEVA TRANSACCIÓN VIEW --- */}
+        {view === "nueva-trans" && (
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
             <TradeForm
               inline
-              onClose={() => { setEditingOperation(null); navigateBack(); }}
-              onSave={handleSaveOperation}
-              onClosePosition={handleClosePosition}
-              openPositions={openPositions as any}
-              initialData={editingOperation ? {
-                id: editingOperation.id,
-                symbol: editingOperation.symbol,
-                entryDate: editingOperation.date ? new Date(editingOperation.date).toISOString().split('T')[0] : '',
-                quantity: Math.abs(editingOperation.quantity || 0),
-                entryPrice: editingOperation.price,
-                broker: editingOperation.broker,
-                cuenta: editingOperation.cuenta || 'USA',
-                type: editingOperation.type,
-                isFalopa: editingOperation.isFalopa,
-                isIntra: editingOperation.isIntra,
-                isClosed: editingOperation.isClosed,
+              onClose={() => { setEditingExecution(null); navigateBack(); }}
+              onSave={handleSaveExecution}
+              cuentas={cuentas}
+              onCloseExecution={async (entryExecId, qty, price, date, account, broker) => {
+                await closeTradeUnitWithQuantity({
+                  symbol: executions.find((e: any) => e.id === entryExecId)?.symbol || '',
+                  closeDate: date ?? new Date().toISOString().split('T')[0],
+                  closePrice: price ?? 0,
+                  totalQty: qty ?? 0,
+                  broker: broker ?? 'AMR',
+                  account: account ?? 'USA',
+                  primaryEntryExecId: entryExecId,
+                });
+                navigateBack();
+                await fetchData();
+              }}
+              openTradeUnits={tradeUnits.filter((tu: any) => tu.status === 'OPEN') as any}
+              initialData={editingExecution ? {
+                id: editingExecution.id,
+                symbol: editingExecution.symbol,
+                entryDate: editingExecution.date ? new Date(editingExecution.date).toISOString().split('T')[0] : '',
+                qty: Math.abs(editingExecution.qty || 0),
+                entryPrice: editingExecution.price,
+                broker: editingExecution.broker,
+                account: editingExecution.account || 'USA',
+                side: editingExecution.side,
+                isClosed: editingExecution.isClosed,
+                currency: editingExecution.currency || 'USD',
+                commissions: editingExecution.commissions || 0,
               } : undefined}
+              getOpenExecutionsForClosing={getOpenExecutionsForClosing}
             />
           </div>
         )}
@@ -1224,7 +1432,7 @@ export default function Home() {
                     ))}
                   </div>
                 </td>
-                {/* Monto — siempre positivo; el tipo determina el signo */}
+                {/* Monto */}
                 <td className="py-1 px-3">
                   <div className="flex items-center gap-1">
                     <span className={cn("text-[11px] font-black shrink-0", editDraft.type === 'DEPOSIT' ? 'text-emerald-400' : 'text-red-400')}>
@@ -1339,6 +1547,63 @@ export default function Home() {
                 setCuentas(await getMemoryCuentas());
               }}
             />
+          </div>
+        )}
+
+        {/* --- CONFIGURACIONES VIEW --- */}
+        {view === "configuraciones" && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
+            <div className="flex items-center gap-3">
+              <Settings className="w-5 h-5 text-blue-400" />
+              <h2 className="text-[13px] font-black uppercase tracking-[0.2em] text-white">Configuraciones del Sistema</h2>
+            </div>
+
+            {/* Estrategias de matching por cuenta */}
+            <div className="space-y-3">
+              <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Estrategia de Matching por Cuenta</p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {cuentas.map((cuenta: any) => (
+                  <div key={cuenta.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
+                    <div>
+                      <p className="text-[13px] font-black text-zinc-200">{cuenta.nombre}</p>
+                      {cuenta.descripcion && <p className="text-[11px] text-zinc-500 mt-0.5">{cuenta.descripcion}</p>}
+                    </div>
+                    <div className="space-y-2">
+                      <select
+                        value={cuenta.matchingStrategy ?? 'FIFO'}
+                        onChange={async (e) => {
+                          const strategy = e.target.value as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
+                          await updateCuentaMatchingStrategy(cuenta.id, strategy);
+                          setCuentas(await getMemoryCuentas());
+                          setConfigSaved(prev => ({ ...prev, [cuenta.id]: true }));
+                          setTimeout(() => setConfigSaved(prev => ({ ...prev, [cuenta.id]: false })), 2000);
+                        }}
+                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-[12px] text-zinc-200 outline-none focus:border-blue-500 transition-colors appearance-none"
+                      >
+                        <option value="FIFO">FIFO — Más antiguo primero</option>
+                        <option value="LIFO">LIFO — Más reciente primero</option>
+                        <option value="MAX_PROFIT">Máximo Profit — Mayor ganancia primero</option>
+                        <option value="MIN_PROFIT">Mínimo Profit — Menor ganancia primero</option>
+                        <option value="MANUAL">Manual — Selección manual</option>
+                      </select>
+                      {configSaved[cuenta.id] && (
+                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                          <Check className="w-3.5 h-3.5" />
+                          <span>Guardado</span>
+                        </div>
+                      )}
+                      <p className="text-[10px] text-zinc-600">
+                        {(cuenta.matchingStrategy ?? 'FIFO') === 'FIFO' && 'Las posiciones se cierran comenzando por las más antiguas (First In, First Out).'}
+                        {(cuenta.matchingStrategy ?? 'FIFO') === 'LIFO' && 'Las posiciones se cierran comenzando por las más recientes (Last In, First Out).'}
+                        {(cuenta.matchingStrategy ?? 'FIFO') === 'MAX_PROFIT' && 'Las posiciones con mayor ganancia potencial se cierran primero.'}
+                        {(cuenta.matchingStrategy ?? 'FIFO') === 'MIN_PROFIT' && 'Las posiciones con menor ganancia potencial (o mayor pérdida) se cierran primero.'}
+                        {(cuenta.matchingStrategy ?? 'FIFO') === 'MANUAL' && 'El usuario selecciona manualmente qué posición cerrar en cada operación.'}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         )}
 

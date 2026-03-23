@@ -10,25 +10,25 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model Operation {
+model Execution {
   id           Int      @id @default(autoincrement())
   date         DateTime
   symbol       String
-  quantity     Float
+  qty          Float
   price        Float
   amount       Float
   broker       String   @default("AMR")
-  type         String   // BUY, SELL
+  account      String   @default("USA")
+  side         String   // BUY, SELL
   isClosed     Boolean  @default(false)
-  remainingQty Float    @default(0) // Para rastrear cuanto falta cerrar
-  isFalopa     Boolean  @default(false)
-  isIntra      Boolean  @default(false)
+  remainingQty Float    @default(0)
+  currency     String   @default("USD")
+  commissions  Float    @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
-  // Relaciones con Trades
-  openTrades  Trade[] @relation("OpenOperation")
-  closeTrades Trade[] @relation("CloseOperation")
+  // Relaciones con TradeUnits
+  entryTradeUnits  TradeUnit[] @relation("EntryExecution")
 
   @@index([symbol])
   @@index([date])
@@ -49,33 +49,33 @@ model CashFlow {
   @@index([broker])
 }
 
-model Trade {
+model TradeUnit {
   id              Int      @id @default(autoincrement())
   symbol          String
-  quantity        Float
-  openDate        DateTime
-  closeDate       DateTime
-  openPrice       Float
-  closePrice      Float
-  openAmount      Float
-  closeAmount     Float
+  qty             Float
+  entryDate       DateTime
+  exitDate        DateTime?
+  entryPrice      Float
+  exitPrice       Float?
+  entryAmount     Float
+  exitAmount      Float?
   days            Int
-  returnAmount    Float
-  returnPercent   Float
+  pnlNominal      Float
+  pnlPercent      Float
   tna             Float
   broker          String
-  instrumentType  String   @default("STOCK") // STOCKS, CEDEARS, BTC
+  account         String   @default("USA")
+  instrumentType  String   @default("STOCK")
+  status          String   @default("OPEN") // OPEN, CLOSED
+  side            String   @default("BUY")  // BUY, SELL
 
-  openOperationId  Int
-  closeOperationId Int
-
-  openOperation  Operation @relation("OpenOperation", fields: [openOperationId], references: [id])
-  closeOperation Operation @relation("CloseOperation", fields: [closeOperationId], references: [id])
+  entryExecId  Int?
+  entryExec    Execution? @relation("EntryExecution", fields: [entryExecId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([symbol])
-  @@index([closeDate])
+  @@index([exitDate])
   @@index([broker])
 }

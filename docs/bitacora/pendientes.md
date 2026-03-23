@@ -2,6 +2,58 @@
 
 ---
 
+## 22 de Marzo, 2026 — Estado post sesión v11 (TradeForm TU, agrupada/desagrupada, estilos)
+
+### Completado en sesión v11
+- ✅ **TradeForm `openTradeUnits` prop** — matching por symbol/side/broker/account, orden entryDate desc
+- ✅ **Non-MANUAL strategies TU preview** — tabla candidatos + panel preview con closeQty/pnlEst
+- ✅ **MANUAL TU table** — columnas ID, F.Entrada, Disponible, P.Entrada, M.Entrada + Cerrar
+- ✅ **ID mismatch fix** — `pendingClose.tuId = tu.id` (no entryExecId)
+- ✅ **Eliminadas columnas "A Cerrar" y "PNL Est."** del listado MANUAL
+- ✅ **Fecha formato `dd/MM/yyyy`** en todos los paneles del TradeForm (`date-fns format`)
+- ✅ **Timestamp real al cerrar** — HH:MM:SS del momento, no T12:00:00 artificial
+- ✅ **Estado default "Abiertos"** — `tuStatusFilter` inicializado en `'OPEN'`
+- ✅ **Labels "Abiertos/Cerrados"** (antes "Abierta/Cerrada")
+- ✅ **Agrupar por sin "Ninguno"** — opciones solo `['Símbolo', 'Cuenta', 'Broker']`
+- ✅ **`allSelectsAll` en DropdownMultiCheck** — "Todos" alterna todo seleccionado / vacío
+- ✅ **Vista agrupada estilo DataTable** — contenedor `bg-zinc-900/50`, barra metadata, paginación
+- ✅ **Sub-filas: F.ENTRADA/F.SALIDA después de ID** — columnas reordenadas
+- ✅ **Sub-filas: `text-[12px]`** — texto más grande
+- ✅ **tradeUnitColumns text-zinc-400** — todas las columnas con render explícito gris
+
+### Pendientes restantes
+
+| # | Descripción | Prioridad |
+|---|---|---|
+| P1 | **Brokers en CashFlowForm** — selects hardcodeados, debería usar `getMemoryBrokers()` | P2 |
+| P2 | **Sidebar lateral fijo** — reemplazar nav horizontal | P3 |
+| P3 | **Activar Prisma** — cuando BD disponible, ver `docs/ACTIVAR-BD.md` | P3 |
+
+---
+
+## 22 de Marzo, 2026 — Estado post sesión v10 (refactor terminológico)
+
+### Completado en sesión v10
+- ✅ **Refactor Operation→Execution / Trade→TradeUnit** — interfaces, estado, server actions, UI, tests
+- ✅ **Nuevos campos Execution**: `currency`, `commissions`
+- ✅ **Renombres de campos**: `qty`, `side`, `account`, `pnlNominal`, `pnlPercent`, `entryDate/exitDate`, `entryPrice/exitPrice`, `entryAmount/exitAmount`, `status: 'OPEN'|'CLOSED'`, `entryExecId`
+- ✅ **Matching engine**: clave `symbol::account::broker` (aislamiento completo)
+- ✅ **Eliminada `getOpenPositions()`** — reemplazada por TUs con status OPEN
+- ✅ **4 tests `closeTradeUnitWithQuantity`**: exacto, parcial, cascade, exceso
+- ✅ **2 tests aislamiento account+broker** en `getOpenExecutionsForClosing`
+- ✅ **Prisma schema** actualizado a nuevos modelos
+- ✅ **42 tests pasando**, 0 errores TypeScript, 0 warnings ESLint
+
+### Pendientes restantes
+
+| # | Descripción | Prioridad |
+|---|---|---|
+| P1 | **Brokers en CashFlowForm** — los selects del formulario de alta usan lista hardcodeada. Debería usar `getMemoryBrokers()` igual que la edición inline | P2 |
+| P2 | **Sidebar lateral fijo** — reemplazar nav horizontal | P3 |
+| P3 | **Activar Prisma** — cuando BD disponible, ver `docs/ACTIVAR-BD.md` | P3 |
+
+---
+
 ## 21 de Marzo, 2026 — Estado post sesión v9
 
 ### Implementado en sesión v9

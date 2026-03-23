@@ -1,6 +1,108 @@
 # Funcionalidades Implementadas — Gestión de Inversiones
 
-> Documento requerido por `docs/domain/core.md`. Última actualización: 2026-03-21 (sesión v8).
+> Documento requerido por `docs/domain/core.md`. Última actualización: 2026-03-22 (sesión v11).
+
+---
+
+## Cambios en esta sesión — v11 (22 de Marzo 2026)
+
+### TradeForm — Cierre de Trades mejorado (pantalla Nueva Ejecución)
+
+#### Prop `openTradeUnits`
+- TradeForm ya no recibe `openExecutions` sino `openTradeUnits: any[]` (TradeUnits con `status === 'OPEN'`)
+- `matchingTUs` useMemo: filtra por `symbol/side='BUY'/broker/account`, ordenados por `entryDate` descendente
+- `strategySortedTUs` useMemo: ordena según estrategia activa de la cuenta; calcula `closeQty` y `pnlEst` cuando hay `qty` y `price` ingresados
+
+#### Tabla de Trades a cerrar — estrategia MANUAL
+- Columnas: ID, F.Entrada, Disponible, P.Entrada, M.Entrada + botón **Cerrar**
+- Eliminadas las columnas "A Cerrar" y "PNL Est." de esta tabla
+- Al hacer clic en Cerrar: `pendingClose.tuId = tu.id` (muestra el ID correcto del TradeUnit, no el `entryExecId`)
+
+#### Tabla de Trades a cerrar — estrategias no-MANUAL (FIFO/LIFO/MAX_PROFIT/MIN_PROFIT)
+- Columnas iguales a MANUAL pero sin botón Cerrar
+- Panel preview separado **"Al guardar, se cerrarán estos Trades — estrategia X"**: aparece cuando `strategySortedTUs.some(r => r.closeQty)` (qty + price ingresados)
+- Columnas del preview: ID, F.Entrada, Disponible, Cant. a Cerrar, P.Entrada, P.Salida, PNL Est.
+
+#### Fechas en los paneles de cierre
+- Formato `dd/MM/yyyy` usando `format` de `date-fns` (antes `toLocaleDateString('es-AR')`)
+- Fecha de cierre usa timestamp real: `new Date(y, m-1, d, now.getHours(), now.getMinutes(), now.getSeconds())` — no más `T12:00:00` artificial
+
+#### Labels actualizados
+- "Trade Units" → **"Trades"** en todos los labels de TradeForm
+
+### Pantalla Trades — Vista agrupada y desagrupada
+
+#### Filtro Estado
+- Valor por defecto cambiado de `''` a `'OPEN'` (se abre siempre mostrando Abiertos)
+- Labels: "Abierta/Cerrada" → **"Abiertos/Cerrados"**
+
+#### Agrupar por (DropdownMultiCheck)
+- Opciones: `['Símbolo', 'Cuenta', 'Broker']` — eliminada la opción "Ninguno"
+- Prop `allSelectsAll`: clic en "Todos" alterna entre todos-seleccionados y ninguno-seleccionado
+- "Todos" = ninguna agrupación activa (modo Desagrupar)
+
+#### Vista agrupada — contenedor y estilos
+- Contenedor con mismo estilo que DataTable: `bg-zinc-900/50 rounded-lg border border-white/5`
+- Barra de metadata: N REGISTROS + paginación 25/50/100/Todos
+- Columnas en orden: SÍMBOLO, F.ENTRADA, F.SALIDA, LADO, CANT, P.ENTRADA, P.SALIDA, M.ENTRADA, M.SALIDA, DÍAS, PNL $, PNL %, TNA, ESTADO, BROKER, CUENTA
+- Filas de grupo: texto `text-zinc-400` (no blanco), "—" para fechas, sin "d" en días, sin "$" ni "+" en montos/PNL
+- Sub-filas: `text-[12px]`, columnas F.ENTRADA y F.SALIDA aparecen **justo después de la columna ID**, formato `dd/MM/yyyy HH:mm`
+
+#### Vista desagrupada (Desagrupar / DataTable)
+- Todas las columnas de `tradeUnitColumns` ahora tienen función `render` explícita con `text-zinc-400`
+- Texto/números en gris igual que la vista agrupada (antes eran blancos por herencia)
+- Columnas de PNL (pnlNominal, pnlPercent) mantienen color semántico verde/rojo
+
+### DropdownMultiCheck — nuevas props
+- `allSelectsAll?: boolean` — invierte la semántica del ítem "Todos": lo selecciona todo en lugar de no seleccionar nada
+- `noneLabel?: string` — ítem extra "deseleccionar todo" con separador antes de las opciones regulares
+
+---
+
+## Cambios en esta sesión — v10 (22 de Marzo 2026)
+
+### Refactor terminológico completo: Operation→Execution, Trade→TradeUnit
+
+#### Interfaces renombradas (data-loader.ts)
+- `Operation` → `Execution` con campos: `qty` (ex `quantity`), `side` (ex `type`), `account` (ex `cuenta`), + nuevos `currency: string`, `commissions: number`
+- `Trade` → `TradeUnit` con campos: `qty`, `side`, `account`, `entryDate/exitDate/entryPrice/exitPrice/entryAmount/exitAmount`, `pnlNominal/pnlPercent` (ex `returnAmount/returnPercent`), `status: 'OPEN'|'CLOSED'` (ex `isClosed: boolean`), `entryExecId` (ex `openOperationId`)
+- `memoryState.operations` → `memoryState.executions`, `memoryState.trades` → `memoryState.tradeUnits`
+
+#### Matching engine mejorado
+- Clave de matching: `symbol::account::broker` — aislamiento completo por cuenta y broker
+- `addOperationToState` → `addExecutionToState`
+
+#### Server Actions renombradas (trades.ts)
+- `getOperations` → `getExecutions`, `getTrades` → `getTradeUnits`
+- `createOperation` → `createExecution`, `deleteOperation` → `deleteExecution`
+- `closeTradeManually` → `closeTradeUnitManually` — recibe `account` y valida aislamiento
+- `closeTradeWithQuantity` → `closeTradeUnitWithQuantity` — filtra por `account` y `broker`
+- `deleteTrade` → `deleteTradeUnit`, `updateOperation` → `updateExecution`
+- `getOpenOperationsForClosing` → `getOpenExecutionsForClosing(symbol, side, account, broker)`
+- Eliminada `getOpenPositions()` — reemplazada por TradeUnits con `status==='OPEN'`
+
+#### UI actualizada (page.tsx)
+- Tipo `View`: eliminado `"open"`, renombrado `"operations"` → `"executions"`, `"trades"` → `"trade-units"`, `"nueva-op"` → `"nueva-exec"`
+- Navegación: "Operaciones" → "Ejecuciones", "Trades" → "Trade Units", eliminado botón "Posiciones", "Nueva Op." → "Nueva Exec."
+- Columnas Ejecuciones: ID, Fecha, Símbolo, Lado, Cant., Precio, Monto, Broker, Cuenta, Moneda, Comis., Falopa, Intra
+- Columnas Trade Units: ID, F.Entrada, F.Salida, Símbolo, Lado, Cant., P.Entrada, P.Salida, M.Entrada, M.Salida, Días, PNL $, PNL %, TNA, Broker, Cuenta, Estado
+- Filtros Trade Units: `"OPEN"` y `"CLOSED"` (en lugar de `isClosed` boolean)
+- TradeUnits con `status==='OPEN'` son inmunes al filtro de período
+
+#### Componentes actualizados
+- `TradeForm.tsx`: campo `side` (ex `type`), `qty` (ex `quantity`), `account` (ex `cuenta`), + nuevos campos `currency` y `commissions`, callback `onCloseExecution`
+- `CloseTradeModal.tsx`: interface con `qty` en lugar de `quantity`, `account`, parámetro `entryExecId`
+- `ViewDetailModal.tsx`: labels actualizados (Lado, Cantidad, Cuenta, PNL $, PNL %, F.Entrada, etc.)
+
+#### Tests actualizados y nuevos (42 tests pasando)
+- `trades.test.ts`: renombrado a `closeTradeUnitManually`, `deleteExecution`, + 4 tests nuevos `closeTradeUnitWithQuantity` (exacto, parcial, cascade, exceso), + 2 tests de aislamiento account+broker
+- `dashboard.test.ts`: refs actualizadas a `pnlNominal`, `status`, `exitDate`, `account`
+- `calculations.test.ts`: campos `entryPrice/exitPrice/qty` + backward compat con `openPrice/closePrice`
+- `operation-parser.test.ts`: campos `qty` y `side` en lugar de `quantity` y `type`
+
+#### Prisma schema actualizado
+- `Operation` → `Execution` con nuevos campos `account`, `side`, `currency`, `commissions`
+- `Trade` → `TradeUnit` con nuevos campos `entryDate/exitDate/entryPrice/exitPrice/entryAmount/exitAmount`, `pnlNominal`, `pnlPercent`, `status`, `side`, `account`, `entryExecId`
 
 ---
 
@@ -180,17 +282,26 @@ Ratio de Sharpe, Ratio de Sortino, Expectativa, Factor de Recuperación, SQN, Cr
 - Exportar como CSV
 - Acciones: Ver detalle / Editar / Eliminar
 
-## 4. Listado de Trades
+## 4. Listado de Trades (TradeUnits)
 
-- Campos: ID, F.Entrada, Símbolo, Cantidad, P.Entrada, M.Entrada, P.Salida, M.Salida, F.Salida, Días, Rdto $, Rdto %, TNA, Estado, Broker, Cuenta
-- Colores semánticos: verde = positivo, rojo = negativo
-- **Filtro Estado** (DropdownMultiCheck): Abiertos / Cerrados
+- Campos: ID, F.Entrada, F.Salida, Símbolo, Lado, Cant., P.Entrada, P.Salida, M.Entrada, M.Salida, Días, PNL $, PNL %, TNA, Estado, Broker, Cuenta
+- Colores semánticos: verde = positivo, rojo = negativo; resto del texto en gris (`text-zinc-400`)
+- **Filtro Estado** (DropdownMultiCheck): Abiertos / Cerrados — default **Abiertos**
 - **Filtro Instrumento** (DropdownMultiCheck): STOCK / CEDEAR / CRYPTO
-- Filtro de período por fecha de cierre (`closeDate`)
-- Trades abiertos son inmunes al filtro de período (siempre visibles)
+- Filtro de período por fecha de cierre (`exitDate`)
+- TradeUnits con `status === 'OPEN'` son inmunes al filtro de período (siempre visibles)
 - Búsqueda libre por símbolo o broker
 - Exportar como CSV
 - Acciones: Ver detalle / Eliminar
+
+### 4b. Vista Agrupada (Agrupar por)
+
+- **Agrupar por** (DropdownMultiCheck con `allSelectsAll`): Símbolo / Cuenta / Broker
+  - Todos = sin agrupación (modo Desagrupar / DataTable normal)
+  - Selección individual o múltiple → agrupa jerárquicamente
+- Contenedor mismo estilo que DataTable: `bg-zinc-900/50`, borde `border-white/5`, barra metadata con N REGISTROS + paginación 25/50/100/Todos
+- **Filas de grupo**: muestra valores agregados; texto `text-zinc-400`; "—" en F.Entrada/F.Salida; sin "d" en días, sin "$" ni "+" en cifras
+- **Sub-filas**: texto `text-[12px]`; columnas F.ENTRADA y F.SALIDA aparecen justo después de la columna ID; formato `dd/MM/yyyy HH:mm`
 
 ## 5. Posiciones Abiertas
 
@@ -203,25 +314,32 @@ Ratio de Sharpe, Ratio de Sortino, Expectativa, Factor de Recuperación, SQN, Cr
 - Búsqueda libre por símbolo o broker
 - Paginación: 25 / 50 / 100 / Todos
 
-## 6. Alta de Operación
+## 6. Alta de Ejecución (Nueva Ejecución)
 
 - Se abre como vista inline (no modal)
 - Toggle visual BUY / SELL (verde / rojo)
 - Campos: Símbolo, Fecha, Cantidad, Precio, Broker, Cuenta, Falopa, Intra
 - Selectores de Broker (Schwab / Binance / Cocos / Balanz / AMR / IOL / IBKR / PP) y Cuenta (USA / Argentina / CRYPTO)
 - Modo pegado rápido: parsea texto libre (`NVDA 2026-03-10 10 800 AMR`)
-- **Panel de posiciones abiertas para cierre**: al escribir símbolo con tipo SELL, muestra las posiciones que coincidan en símbolo + broker + cuenta + tipo opuesto
-- Botón **"Cerrar"** (texto): usa cantidad, precio y fecha del formulario; valida que estén completos antes de activar
-- **Tarjeta de confirmación pendiente**: al hacer clic en "Cerrar", muestra el trade completo con los valores resultantes:
-  - ID, F.Entrada, Símbolo, Cant., P.Entrada, P.Salida, M.Salida, F.Salida, Rdto $
-  - No muestra broker ni cuenta
-  - Se ejecuta al presionar "Guardar Operación"
-- **Cierre parcial FIFO** (ejecutado al guardar):
-  - qty = trade qty → cierre total
-  - qty < trade qty → cierra con esa cantidad; crea nuevo trade abierto con el remanente
-  - qty > trade qty → cascade automático a los siguientes trades abiertos del mismo símbolo (FIFO); si sobra, crea SELL abierta con el excedente
-- **Modo edición**: botón lápiz en tabla abre el formulario con datos pre-cargados y llama a `updateOperation`
+- **Modo edición**: botón lápiz en tabla abre el formulario con datos pre-cargados y llama a `updateExecution`
 - **Corrección de zona horaria**: todas las fechas se parsean como mediodía local (`T12:00:00`) para evitar el desplazamiento UTC-midnight en zonas UTC-3 o similares
+
+### 6b. Cierre de Trades desde Nueva Ejecución
+
+Al ingresar símbolo con tipo SELL, se muestran los **Trades abiertos** (`openTradeUnits`) que coinciden en símbolo + broker + cuenta, ordenados por fecha de entrada descendente.
+
+**Estrategia MANUAL:**
+- Tabla con columnas: ID, F.Entrada (formato `dd/MM/yyyy`), Disponible, P.Entrada, M.Entrada
+- Botón **Cerrar** por fila; al hacer clic muestra confirmación con el Trade seleccionado
+- Tarjeta de confirmación: ID (del TradeUnit), F.Entrada, Símbolo, Cant., P.Entrada, P.Salida, M.Salida, F.Salida, PNL Est.
+- Al guardar: cierra ese Trade con los datos del formulario; timestamp real (HH:MM:SS del momento de guardado)
+
+**Estrategias automáticas (FIFO / LIFO / MAX_PROFIT / MIN_PROFIT):**
+- Tabla con mismas columnas que MANUAL (sin botón Cerrar) — muestra todos los Trades candidatos según la estrategia
+- **Panel preview separado** "Al guardar, se cerrarán estos Trades — estrategia X": visible cuando hay `qty` y `price` ingresados
+  - Columnas: ID, F.Entrada (`dd/MM/yyyy`), Disponible, Cant. a Cerrar, P.Entrada, P.Salida, PNL Est.
+  - Se ejecuta automáticamente al guardar
+- Cierre cascade: qty == Trade qty → cierre total; qty < Trade qty → cierre parcial + nuevo Trade abierto con remanente; qty > Trade qty → cascade al siguiente Trade (FIFO/estrategia)
 
 ## 7. Modal de Solo Lectura (ViewDetailModal)
 

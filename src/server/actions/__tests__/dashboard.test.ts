@@ -21,7 +21,7 @@ describe('getStats', () => {
     initializeMemoryState(MINI_CSV);
   });
 
-  it('retorna stats vacías si no hay trades en el período', async () => {
+  it('retorna stats vacías si no hay trade units en el período', async () => {
     const { getStats } = await import('../dashboard');
     const result = await getStats(new Date('2020-01-01'), new Date('2020-12-31'));
     expect(result.totalTrades).toBe(0);
@@ -58,7 +58,7 @@ describe('getDashboardSummary', () => {
     initializeMemoryState(MINI_CSV);
   });
 
-  it('detecta operaciones abiertas', async () => {
+  it('detecta ejecuciones abiertas', async () => {
     const { getDashboardSummary } = await import('../dashboard');
     const result = await getDashboardSummary();
     expect(result.openOperations).toBeGreaterThan(0);
@@ -89,10 +89,10 @@ describe('getTopStats', () => {
     expect(result?.top5Trades.length).toBeLessThanOrEqual(5);
   });
 
-  it('top5Trades ordenado por returnAmount desc', async () => {
+  it('top5Trades ordenado por pnlNominal desc', async () => {
     const { getTopStats } = await import('../dashboard');
     const result = await getTopStats();
-    const amounts = result?.top5Trades.map((t: any) => t.returnAmount) ?? [];
+    const amounts = result?.top5Trades.map((t: any) => t.pnlNominal) ?? [];
     for (let i = 1; i < amounts.length; i++) {
       expect(amounts[i - 1]).toBeGreaterThanOrEqual(amounts[i]);
     }

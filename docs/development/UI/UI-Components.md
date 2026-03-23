@@ -58,10 +58,13 @@ La interfaz se divide en tres bloques horizontales principales:
 * **Sortable:** Las cabeceras deben permitir el ordenamiento ascendente/descendente.
 
 
-    
 ## 3. Estilo y Espaciado (Design Tokens)
 * **Densidad:** "High Density". Espaciado vertical mínimo en filas (Padding-y: 4px)
 
-## 4. Estructura del Data Grid (Tabla)
+
+## 4. Inputs
+1. **Los inputs deben tener un placeholder**
+
+
 
 

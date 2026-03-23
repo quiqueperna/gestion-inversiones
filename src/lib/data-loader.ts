@@ -1,51 +1,55 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { subDays, subMonths } from "date-fns";
+import { getInstrumentType } from "@/lib/utils";
 
 export const USE_DB = process.env.USE_DB === 'true';
 
 // --- Interfaces ---
 
-export interface Operation {
+export interface Execution {
     id: number;
     date: Date;
     symbol: string;
-    quantity: number;
+    qty: number;
     price: number;
     amount: number;
     broker: string;
-    cuenta: string;
-    type: 'BUY' | 'SELL';
+    account: string;
+    side: 'BUY' | 'SELL';
     remainingQty: number;
     isClosed: boolean;
-    isFalopa: boolean;
-    isIntra: boolean;
+    currency: string;
+    commissions: number;
+    exchange_rate: number; // Tipo de cambio respecto a moneda base. Default: 1
 }
 
-export interface Trade {
+export interface TradeUnit {
     id: number;
     symbol: string;
-    quantity: number;
-    openDate: Date;
-    closeDate?: Date;
-    openPrice: number;
-    closePrice?: number;
-    openAmount: number;
-    closeAmount?: number;
+    qty: number;
+    entryDate: Date;
+    exitDate?: Date;
+    entryPrice: number;
+    exitPrice?: number;
+    entryAmount: number;
+    exitAmount?: number;
     days: number;
-    returnAmount: number;
-    returnPercent: number;
+    pnlNominal: number;
+    pnlPercent: number;
     tna: number;
     broker: string;
-    cuenta: string;
-    instrumentType: string;
-    isClosed: boolean;
-    openOperationId?: number;
+    account: string;
+    status: 'OPEN' | 'CLOSED';
+    entryExecId?: number;
+    exitExecId?: number;
+    side: 'BUY' | 'SELL';
 }
 
 export interface Cuenta {
     id: number;
     nombre: string;
     descripcion?: string;
+    matchingStrategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
 }
 
 export interface Broker {
@@ -67,8 +71,8 @@ export interface CashFlow {
 // --- Memory State ---
 
 let memoryState = {
-    operations: [] as Operation[],
-    trades: [] as Trade[],
+    executions: [] as Execution[],
+    tradeUnits: [] as TradeUnit[],
     cashFlows: [] as CashFlow[],
     cuentas: [] as Cuenta[],
     brokers: [] as Broker[],
@@ -91,7 +95,6 @@ export function initializeMemoryState(csvText: string, includeMockData = false) 
         headers.forEach((header, i) => {
             let val: any = values[i];
             if (header === 'quantity' || header === 'price') val = parseFloat(val);
-            if (header === 'isFalopa') val = val === 'true';
             if (header === 'date') val = new Date(val + 'T12:00:00');
             op[header] = val;
         });
@@ -99,76 +102,78 @@ export function initializeMemoryState(csvText: string, includeMockData = false) 
         if (op.category === 'TRADE') {
             op.amount = Math.abs(op.quantity * op.price);
             op.remainingQty = Math.abs(op.quantity);
-            op.type = op.type || (op.quantity > 0 ? 'BUY' : 'SELL');
+            op.side = op.type || (op.quantity > 0 ? 'BUY' : 'SELL');
+            op.qty = Math.abs(op.quantity);
+            op.currency = 'USD';
+            op.commissions = 0;
             // If cuenta not in CSV headers, derive from broker
             if (!headers.includes('cuenta')) {
                 const brokerCuentaMap: Record<string, string> = { 'IBKR': 'USA', 'IOL': 'Argentina', 'Schwab': 'USA', 'Binance': 'CRYPTO', 'Cocos': 'Argentina', 'Balanz': 'Argentina' };
-                op.cuenta = brokerCuentaMap[op.broker] || 'USA';
+                op.account = brokerCuentaMap[op.broker] || 'USA';
             } else {
-                op.cuenta = op.cuenta?.trim() || 'USA';
+                op.account = op.cuenta?.trim() || 'USA';
             }
             rawOps.push(op);
         }
     });
 
-    // 2. Add Mock Operations (Open Positions) — skipped in test mode
+    // 2. Add Mock Executions (Open Positions) — skipped in test mode
     const today = new Date();
     const mockOps = includeMockData ? [
-        { id: 900, date: subDays(today, 5), symbol: 'TSLA', quantity: 10, price: 200, amount: 2000, broker: 'Schwab', cuenta: 'USA', type: 'BUY', remainingQty: 10, isFalopa: false, isIntra: false },
-        { id: 901, date: subDays(today, 2), symbol: 'NVDA', quantity: -5, price: 800, amount: 4000, broker: 'IOL', cuenta: 'Argentina', type: 'SELL', remainingQty: 5, isFalopa: false, isIntra: true },
-        { id: 902, date: subMonths(today, 1), symbol: 'AAPL', quantity: 100, price: 150, amount: 15000, broker: 'Schwab', cuenta: 'USA', type: 'BUY', remainingQty: 100, isFalopa: false, isIntra: false },
-        { id: 903, date: subDays(today, 10), symbol: 'AAPL', quantity: -50, price: 160, amount: 8000, broker: 'Schwab', cuenta: 'USA', type: 'SELL', remainingQty: 50, isFalopa: false, isIntra: false }
+        { id: 900, date: subDays(today, 5), symbol: 'TSLA', quantity: 10, qty: 10, price: 200, amount: 2000, broker: 'Schwab', account: 'USA', side: 'BUY', remainingQty: 10, currency: 'USD', commissions: 0, exchange_rate: 1 },
+        { id: 901, date: subDays(today, 2), symbol: 'NVDA', quantity: -5, qty: 5, price: 800, amount: 4000, broker: 'IOL', account: 'Argentina', side: 'SELL', remainingQty: 5, currency: 'USD', commissions: 0, exchange_rate: 1 },
+        { id: 902, date: subMonths(today, 1), symbol: 'AAPL', quantity: 100, qty: 100, price: 150, amount: 15000, broker: 'Schwab', account: 'USA', side: 'BUY', remainingQty: 100, currency: 'USD', commissions: 0, exchange_rate: 1 },
+        { id: 903, date: subDays(today, 10), symbol: 'AAPL', quantity: -50, qty: 50, price: 160, amount: 8000, broker: 'Schwab', account: 'USA', side: 'SELL', remainingQty: 50, currency: 'USD', commissions: 0, exchange_rate: 1 }
     ] : [];
 
     const allOps = [...rawOps, ...mockOps].sort((a, b) => a.date.getTime() - b.date.getTime());
 
-    // 3. FIFO Matching
+    // 3. FIFO Matching — key: symbol::account::broker
     const openInventory: Record<string, any[]> = {};
-    const trades: Trade[] = [];
+    const tradeUnits: TradeUnit[] = [];
     let tradeIdCounter = 1;
 
     allOps.forEach(op => {
-        // Simple Instrument Heuristic
-        let instrumentType = 'STOCK';
-        if (op.symbol.includes('BTC') || op.symbol.includes('ETH')) instrumentType = 'CRYPTO';
-        else if (op.symbol.endsWith('D') || op.symbol.length > 4) instrumentType = 'CEDEAR';
+        const side = op.side || (op.quantity > 0 ? 'BUY' : 'SELL');
+        const matchKey = `${op.symbol}::${op.account || 'USA'}::${op.broker}`;
 
-        if (op.type === 'BUY') {
-            if (!openInventory[op.symbol]) openInventory[op.symbol] = [];
-            openInventory[op.symbol].push(op);
+        if (side === 'BUY') {
+            if (!openInventory[matchKey]) openInventory[matchKey] = [];
+            openInventory[matchKey].push(op);
         } else {
             let sellQty = Math.abs(op.quantity);
-            const matches = openInventory[op.symbol] || [];
-            
+            const matches = openInventory[matchKey] || [];
+
             while (sellQty > 0 && matches.length > 0) {
                 const buyOp = matches[0];
                 const matchQty = Math.min(sellQty, buyOp.remainingQty);
-                
-                const returnAmount = (op.price - buyOp.price) * matchQty;
-                const entryAmount = buyOp.price * matchQty;
-                const closeAmount = op.price * matchQty;
-                const days = Math.ceil(Math.abs(op.date.getTime() - buyOp.date.getTime()) / (1000 * 60 * 60 * 24)) || 1;
-                const returnPercent = (returnAmount / entryAmount) * 100;
 
-                trades.push({
+                const pnlNominal = (op.price - buyOp.price) * matchQty;
+                const entryAmount = buyOp.price * matchQty;
+                const exitAmount = op.price * matchQty;
+                const days = Math.ceil(Math.abs(op.date.getTime() - buyOp.date.getTime()) / (1000 * 60 * 60 * 24)) || 1;
+                const pnlPercent = (pnlNominal / entryAmount) * 100;
+
+                tradeUnits.push({
                     id: tradeIdCounter++,
                     symbol: op.symbol,
-                    quantity: matchQty,
-                    openDate: buyOp.date,
-                    closeDate: op.date,
-                    openPrice: buyOp.price,
-                    closePrice: op.price,
-                    openAmount: entryAmount,
-                    closeAmount: closeAmount,
+                    qty: matchQty,
+                    entryDate: buyOp.date,
+                    exitDate: op.date,
+                    entryPrice: buyOp.price,
+                    exitPrice: op.price,
+                    entryAmount: entryAmount,
+                    exitAmount: exitAmount,
                     days,
-                    returnAmount,
-                    returnPercent,
-                    tna: (returnPercent / days) * 365,
+                    pnlNominal,
+                    pnlPercent,
+                    tna: (pnlPercent / days) * 365,
                     broker: op.broker,
-                    cuenta: buyOp.cuenta || 'USA',
-                    instrumentType,
-                    isClosed: true,
-                    openOperationId: buyOp.id,
+                    account: buyOp.account || 'USA',
+                    status: 'CLOSED',
+                    entryExecId: buyOp.id,
+                    exitExecId: op.id,
+                    side: 'BUY',
                 });
 
                 buyOp.remainingQty -= matchQty;
@@ -183,31 +188,27 @@ export function initializeMemoryState(csvText: string, includeMockData = false) 
         }
     });
 
-    // 4. Create open Trade records for unmatched BUY positions
+    // 4. Create open TradeUnit records for unmatched BUY positions
     Object.values(openInventory).forEach(buyOps => {
         buyOps.forEach(buyOp => {
             if (buyOp.remainingQty <= 0.0001) return;
-            let instrumentType = 'STOCK';
-            if (buyOp.symbol.includes('BTC') || buyOp.symbol.includes('ETH')) instrumentType = 'CRYPTO';
-            else if (buyOp.symbol.endsWith('D') || buyOp.symbol.length > 4) instrumentType = 'CEDEAR';
-
             const days = Math.ceil(Math.abs(new Date().getTime() - buyOp.date.getTime()) / (1000 * 60 * 60 * 24)) || 1;
-            trades.push({
+            tradeUnits.push({
                 id: tradeIdCounter++,
                 symbol: buyOp.symbol,
-                quantity: buyOp.remainingQty,
-                openDate: buyOp.date,
-                openPrice: buyOp.price,
-                openAmount: buyOp.price * buyOp.remainingQty,
+                qty: buyOp.remainingQty,
+                entryDate: buyOp.date,
+                entryPrice: buyOp.price,
+                entryAmount: buyOp.price * buyOp.remainingQty,
                 days,
-                returnAmount: 0,
-                returnPercent: 0,
+                pnlNominal: 0,
+                pnlPercent: 0,
                 tna: 0,
                 broker: buyOp.broker,
-                cuenta: buyOp.cuenta || 'USA',
-                instrumentType,
-                isClosed: false,
-                openOperationId: buyOp.id,
+                account: buyOp.account || 'USA',
+                status: 'OPEN',
+                entryExecId: buyOp.id,
+                side: 'BUY',
             });
         });
     });
@@ -221,14 +222,32 @@ export function initializeMemoryState(csvText: string, includeMockData = false) 
         cashFlows.push({ id: i*3+3, date: new Date(2023, 11, 20), amount: 2000, type: 'WITHDRAWAL', broker: b, description: 'Retiro' });
     });
 
+    // Build executions array from allOps, mapping old field names to new
+    const executions: Execution[] = allOps.map(op => ({
+        id: op.id,
+        date: op.date,
+        symbol: op.symbol,
+        qty: op.qty ?? Math.abs(op.quantity ?? 0),
+        price: op.price,
+        amount: op.amount,
+        broker: op.broker,
+        account: op.account || 'USA',
+        side: op.side || (op.quantity > 0 ? 'BUY' : 'SELL'),
+        remainingQty: op.remainingQty,
+        isClosed: op.isClosed || false,
+        currency: op.currency || 'USD',
+        commissions: op.commissions || 0,
+        exchange_rate: op.exchange_rate ?? 1,
+    }));
+
     memoryState = {
-        operations: allOps,
-        trades,
+        executions,
+        tradeUnits,
         cashFlows,
         cuentas: [
-            { id: 1, nombre: 'USA', descripcion: 'Cuenta internacional' },
-            { id: 2, nombre: 'Argentina', descripcion: 'Cuenta local' },
-            { id: 3, nombre: 'CRYPTO', descripcion: 'Criptomonedas' },
+            { id: 1, nombre: 'USA', descripcion: 'Cuenta internacional', matchingStrategy: 'FIFO' as const },
+            { id: 2, nombre: 'Argentina', descripcion: 'Cuenta local', matchingStrategy: 'FIFO' as const },
+            { id: 3, nombre: 'CRYPTO', descripcion: 'Criptomonedas', matchingStrategy: 'FIFO' as const },
         ],
         brokers: [
             { id: 1, nombre: 'Schwab', descripcion: 'Interactive Brokers USA' },
@@ -250,8 +269,8 @@ export function getMemoryState() {
 
 export function resetMemoryState() {
   memoryState = {
-    operations: [] as Operation[],
-    trades: [] as Trade[],
+    executions: [] as Execution[],
+    tradeUnits: [] as TradeUnit[],
     cashFlows: [] as CashFlow[],
     cuentas: [] as Cuenta[],
     brokers: [] as Broker[],
@@ -292,7 +311,7 @@ export function getCuentas(): Cuenta[] {
 export function addCuenta(nombre: string, descripcion?: string): Cuenta {
     const state = getMemoryState();
     const newId = state.cuentas.length > 0 ? Math.max(...state.cuentas.map(c => c.id)) + 1 : 1;
-    const newCuenta: Cuenta = { id: newId, nombre, descripcion };
+    const newCuenta: Cuenta = { id: newId, nombre, descripcion, matchingStrategy: 'FIFO' };
     state.cuentas.push(newCuenta);
     return newCuenta;
 }
@@ -311,6 +330,14 @@ export function removeCuenta(id: number): boolean {
     const idx = state.cuentas.findIndex(c => c.id === id);
     if (idx === -1) return false;
     state.cuentas.splice(idx, 1);
+    return true;
+}
+
+export function updateCuentaStrategy(id: number, strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL'): boolean {
+    const state = getMemoryState();
+    const cuenta = state.cuentas.find(c => c.id === id);
+    if (!cuenta) return false;
+    cuenta.matchingStrategy = strategy;
     return true;
 }
 
@@ -343,58 +370,63 @@ export function removeBroker(id: number): boolean {
     return true;
 }
 
-export function addOperationToState(data: {
-    symbol: string; quantity: number; price: number; broker: string;
-    cuenta: string; type: 'BUY' | 'SELL'; isFalopa?: boolean; isIntra?: boolean; date?: Date;
-}): Operation {
+export function addTransactionToState(data: {
+    symbol: string; qty: number; price: number; broker: string;
+    account: string; side: 'BUY' | 'SELL'; date?: Date;
+    currency?: string; commissions?: number; exchange_rate?: number;
+}): Execution {
     const state = getMemoryState();
-    const newId = state.operations.length > 0 ? Math.max(...state.operations.map(o => o.id)) + 1 : 1;
-    const op: Operation = {
+    const newId = state.executions.length > 0 ? Math.max(...state.executions.map(o => o.id)) + 1 : 1;
+    const exec: Execution = {
         id: newId,
         date: data.date || new Date(),
         symbol: data.symbol.toUpperCase(),
-        quantity: data.quantity,
+        qty: data.qty,
         price: data.price,
-        amount: Math.abs(data.quantity * data.price),
+        amount: Math.abs(data.qty * data.price),
         broker: data.broker,
-        cuenta: data.cuenta || 'USA',
-        type: data.type,
-        remainingQty: Math.abs(data.quantity),
+        account: data.account || 'USA',
+        side: data.side,
+        remainingQty: Math.abs(data.qty),
         isClosed: false,
-        isFalopa: data.isFalopa || false,
-        isIntra: data.isIntra || false,
+        currency: data.currency || 'USD',
+        commissions: data.commissions || 0,
+        exchange_rate: data.exchange_rate ?? 1,
     };
-    state.operations.push(op);
-    return op;
+    state.executions.push(exec);
+    return exec;
 }
+
+// Backward compat alias
+export const addExecutionToState = addTransactionToState;
 
 export function getTopStats() {
   const state = getMemoryState();
-  if (!state.isInitialized || state.trades.length === 0) return null;
+  if (!state.isInitialized || state.tradeUnits.length === 0) return null;
 
-  const closedTrades = state.trades.filter(t => t.isClosed);
-  const openOps = state.operations.filter(op => !op.isClosed && op.remainingQty > 0);
+  const closedTUs = state.tradeUnits.filter(t => t.status === 'CLOSED');
+  const openExecs = state.executions.filter(op => !op.isClosed && op.remainingQty > 0);
 
-  // Top 5 trades por returnAmount desc
-  const top5Trades = [...closedTrades].sort((a, b) => b.returnAmount - a.returnAmount).slice(0, 5);
+  // Top 5 tradeUnits por pnlNominal desc
+  const top5Trades = [...closedTUs].sort((a, b) => b.pnlNominal - a.pnlNominal).slice(0, 5);
 
-  // Mejor mes (agrupar por mes, sumar returnAmount)
+  // Mejor mes (agrupar por mes, sumar pnlNominal)
   const monthlyMap = new Map<string, number>();
-  closedTrades.forEach(t => {
-    const key = `${t.closeDate!.getFullYear()}-${String(t.closeDate!.getMonth()+1).padStart(2,'0')}`;
-    monthlyMap.set(key, (monthlyMap.get(key) || 0) + t.returnAmount);
+  closedTUs.forEach(t => {
+    const key = `${t.exitDate!.getFullYear()}-${String(t.exitDate!.getMonth()+1).padStart(2,'0')}`;
+    monthlyMap.set(key, (monthlyMap.get(key) || 0) + t.pnlNominal);
   });
   const bestMonthEntry = [...monthlyMap.entries()].sort((a, b) => b[1] - a[1])[0];
   const bestMonth = bestMonthEntry ? { month: bestMonthEntry[0], total: bestMonthEntry[1] } : null;
 
-  // Trade con mejor returnPercent
-  const bestReturnTrade = [...closedTrades].sort((a, b) => b.returnPercent - a.returnPercent)[0] || null;
+  // TradeUnit con mejor pnlPercent
+  const bestReturnTrade = [...closedTUs].sort((a, b) => b.pnlPercent - a.pnlPercent)[0] || null;
 
   // Rendimiento por tipo de instrumento
   const byInstrument: Record<string, number> = {};
-  closedTrades.forEach(t => {
-    const k = t.instrumentType || 'STOCK';
-    byInstrument[k] = (byInstrument[k] || 0) + t.returnAmount;
+  closedTUs.forEach(t => {
+    const k = getInstrumentType(t.symbol);
+    byInstrument[k] = (byInstrument[k] || 0) + t.pnlNominal;
   });
 
   return {
@@ -402,9 +434,9 @@ export function getTopStats() {
     bestMonth,
     bestReturnTrade,
     byInstrument,
-    openPositionsCount: openOps.length,
+    openPositionsCount: openExecs.length,
     openPositionsBySymbol: Object.entries(
-      openOps.reduce((acc: Record<string, { count: number; totalAmount: number }>, op) => {
+      openExecs.reduce((acc: Record<string, { count: number; totalAmount: number }>, op) => {
         if (!acc[op.symbol]) acc[op.symbol] = { count: 0, totalAmount: 0 };
         acc[op.symbol].count++;
         acc[op.symbol].totalAmount += op.amount;

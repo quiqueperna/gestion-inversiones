@@ -1,7 +1,3 @@
-# Estilo
-
-Toda la información debe ser en español.
-
 * **Estilo:** Dashboard con estética Dark Mode Moderna (Glassmorphism sutil)
 * **Tipografía:** CSS/Tailwind
 * Títulos Secciones Sans Serif 0.75rem (12px) 700 (Bold) 
@@ -25,10 +21,5 @@ Toda la información debe ser en español.
 3.  **Reducir el "Vertical Rhythm" (Ritmo Vertical)** 
 4.  **Priorizar visibilidad sobre espacio negativo:** 
 5.  **Especificación de escala (Tailwind):**  clases de utilidad como `py-1` (padding vertical mínimo) o `gap-2` (espaciado reducido entre elementos) para definir la escala exacta de proximidad.
-
-
-## Inputs
-1. **Los inputs deben tener un placeholder**
-
 
 
