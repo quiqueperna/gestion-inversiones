@@ -1393,6 +1393,7 @@ export default function Home() {
               inline
               onClose={() => navigateBack()}
               onSave={handleSaveCashFlow}
+              brokers={brokers.map((b: any) => b.nombre)}
               accounts={accounts.map((c: any) => c.nombre)}
             />
           </div>

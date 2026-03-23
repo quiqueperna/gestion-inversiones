@@ -14,20 +14,17 @@ interface CashFlowFormProps {
     description?: string;
   }) => Promise<void>;
   inline?: boolean;
+  brokers?: string[];
   accounts?: string[];
 }
 
-const BROKERS = ["Schwab", "Binance", "Cocos", "Balanz", "AMR", "IOL", "IBKR", "PP"];
-const DEFAULT_ACCOUNTS = ["USA", "Argentina", "CRYPTO"];
-
-export default function CashFlowForm({ onClose, onSave, inline = false, accounts }: CashFlowFormProps) {
-  const ACCOUNTS = accounts && accounts.length > 0 ? accounts : DEFAULT_ACCOUNTS;
+export default function CashFlowForm({ onClose, onSave, inline = false, brokers = [], accounts = [] }: CashFlowFormProps) {
   const today = new Date().toISOString().split("T")[0];
   const [date, setDate] = useState(today);
   const [amount, setAmount] = useState("");
   const [type, setType] = useState<"DEPOSIT" | "WITHDRAWAL">("DEPOSIT");
-  const [broker, setBroker] = useState("AMR");
-  const [account, setAccount] = useState("USA");
+  const [broker, setBroker] = useState(brokers[0] ?? "");
+  const [account, setAccount] = useState(accounts[0] ?? "");
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -92,14 +89,14 @@ export default function CashFlowForm({ onClose, onSave, inline = false, accounts
               <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Broker</label>
               <select value={broker} onChange={e => setBroker(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-lg text-[13px] outline-none focus:border-blue-500 text-zinc-200 appearance-none">
-                {BROKERS.map(b => <option key={b} value={b}>{b}</option>)}
+                {brokers.map(b => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
             <div className="space-y-1">
               <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-widest">Cuenta</label>
               <select value={account} onChange={e => setAccount(e.target.value)}
                 className="w-full px-3 py-2 bg-zinc-950 border border-white/10 rounded-lg text-[13px] outline-none focus:border-blue-500 text-zinc-200 appearance-none">
-                {ACCOUNTS.map(c => <option key={c} value={c}>{c}</option>)}
+                {accounts.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
           </div>
