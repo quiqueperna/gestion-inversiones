@@ -7,7 +7,8 @@ import {
   TrendingUp, TrendingDown, DollarSign,
   Briefcase, Percent, Clock, PieChart, Wallet,
   Trophy, AlertCircle, Plus, RefreshCw,
-  ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X, Settings
+  ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X, Settings,
+  User, Globe, Bell, Palette, Languages, BarChart3
 } from "lucide-react";
 import {
   format, startOfToday, endOfToday,
@@ -74,6 +75,7 @@ export default function Home() {
   const [tuStatusFilter, setTuStatusFilter] = useState<string>('OPEN');
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [configSaved, setConfigSaved] = useState<Record<number, boolean>>({});
+  const [configSection, setConfigSection] = useState("mi-cuenta");
   const [groupedSortKey, setGroupedSortKey] = useState<string>('symbol');
   const [groupedSortDir, setGroupedSortDir] = useState<'asc' | 'desc'>('asc');
   const [groupedPageSize, setGroupedPageSize] = useState<number>(25);
@@ -737,6 +739,10 @@ export default function Home() {
 
         <div className="flex items-center gap-2">
           {refreshing && <RefreshCw className="w-3.5 h-3.5 animate-spin text-zinc-500" />}
+          <div className="bg-zinc-950 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span className="text-[10px] font-bold uppercase text-zinc-400">Sistema Online</span>
+          </div>
         </div>
       </nav>
 
@@ -819,12 +825,6 @@ export default function Home() {
                     <Plus className="w-3 h-3" />
                     Nuevo Dep/Ret
                   </button>
-                )}
-                {view !== "movimientos" && (
-                  <div className="bg-zinc-950 px-3 py-1.5 rounded-lg border border-white/5 flex items-center gap-2">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-                    <span className="text-[10px] font-bold uppercase text-zinc-400">Sistema Online</span>
-                  </div>
                 )}
               </div>
             }
@@ -1553,58 +1553,262 @@ export default function Home() {
 
         {/* --- CONFIGURACIONES VIEW --- */}
         {view === "configuraciones" && (
-          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 space-y-6">
-            <div className="flex items-center gap-3">
-              <Settings className="w-5 h-5 text-blue-400" />
-              <h2 className="text-[13px] font-black uppercase tracking-[0.2em] text-white">Configuraciones del Sistema</h2>
-            </div>
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex gap-6 min-h-[600px]">
 
-            {/* Estrategias de matching por cuenta */}
-            <div className="space-y-3">
-              <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Estrategia de Matching por Cuenta</p>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {cuentas.map((cuenta: any) => (
-                  <div key={cuenta.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
-                    <div>
-                      <p className="text-[13px] font-black text-zinc-200">{cuenta.nombre}</p>
-                      {cuenta.descripcion && <p className="text-[11px] text-zinc-500 mt-0.5">{cuenta.descripcion}</p>}
-                    </div>
-                    <div className="space-y-2">
-                      <select
-                        value={cuenta.matchingStrategy ?? 'FIFO'}
-                        onChange={async (e) => {
-                          const strategy = e.target.value as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
-                          await updateCuentaMatchingStrategy(cuenta.id, strategy);
-                          setCuentas(await getMemoryCuentas());
-                          setConfigSaved(prev => ({ ...prev, [cuenta.id]: true }));
-                          setTimeout(() => setConfigSaved(prev => ({ ...prev, [cuenta.id]: false })), 2000);
-                        }}
-                        className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-[12px] text-zinc-200 outline-none focus:border-blue-500 transition-colors appearance-none"
-                      >
-                        <option value="FIFO">FIFO — Más antiguo primero</option>
-                        <option value="LIFO">LIFO — Más reciente primero</option>
-                        <option value="MAX_PROFIT">Máximo Profit — Mayor ganancia primero</option>
-                        <option value="MIN_PROFIT">Mínimo Profit — Menor ganancia primero</option>
-                        <option value="MANUAL">Manual — Selección manual</option>
-                      </select>
-                      {configSaved[cuenta.id] && (
-                        <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
-                          <Check className="w-3.5 h-3.5" />
-                          <span>Guardado</span>
-                        </div>
-                      )}
-                      <p className="text-[10px] text-zinc-600">
-                        {(cuenta.matchingStrategy ?? 'FIFO') === 'FIFO' && 'Las posiciones se cierran comenzando por las más antiguas (First In, First Out).'}
-                        {(cuenta.matchingStrategy ?? 'FIFO') === 'LIFO' && 'Las posiciones se cierran comenzando por las más recientes (Last In, First Out).'}
-                        {(cuenta.matchingStrategy ?? 'FIFO') === 'MAX_PROFIT' && 'Las posiciones con mayor ganancia potencial se cierran primero.'}
-                        {(cuenta.matchingStrategy ?? 'FIFO') === 'MIN_PROFIT' && 'Las posiciones con menor ganancia potencial (o mayor pérdida) se cierran primero.'}
-                        {(cuenta.matchingStrategy ?? 'FIFO') === 'MANUAL' && 'El usuario selecciona manualmente qué posición cerrar en cada operación.'}
-                      </p>
-                    </div>
-                  </div>
+            {/* Sidebar */}
+            <nav className="hidden md:flex flex-col w-56 shrink-0 space-y-6">
+              {/* Sección CUENTA */}
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 px-3 mb-1">Cuenta</p>
+                {[
+                  { id: "mi-cuenta", label: "Mi cuenta", icon: User },
+                  { id: "mi-plan", label: "Mi plan", icon: Trophy },
+                  { id: "zona-peligro", label: "Zona de peligro", icon: AlertCircle },
+                ].map(({ id, label, icon: Icon }) => (
+                  <button key={id} onClick={() => setConfigSection(id)}
+                    className={cn("w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all text-left",
+                      configSection === id ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5")}>
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    {label}
+                  </button>
                 ))}
               </div>
-            </div>
+
+              {/* Sección PREFERENCIAS */}
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 px-3 mb-1">Preferencias</p>
+                {[
+                  { id: "apariencia", label: "Apariencia", icon: Palette },
+                  { id: "idioma", label: "Idioma", icon: Languages },
+                  { id: "regional", label: "Regional", icon: Globe },
+                  { id: "dashboard", label: "Dashboard", icon: BarChart3 },
+                ].map(({ id, label, icon: Icon }) => (
+                  <button key={id} onClick={() => setConfigSection(id)}
+                    className={cn("w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all text-left",
+                      configSection === id ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5")}>
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Sección ALERTAS */}
+              <div>
+                <p className="text-[9px] font-black uppercase tracking-[0.2em] text-zinc-600 px-3 mb-1">Alertas</p>
+                {[
+                  { id: "alertas", label: "Alertas", icon: Bell },
+                ].map(({ id, label, icon: Icon }) => (
+                  <button key={id} onClick={() => setConfigSection(id)}
+                    className={cn("w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-[12px] font-semibold transition-all text-left",
+                      configSection === id ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300 hover:bg-white/5")}>
+                    <Icon className="w-3.5 h-3.5 shrink-0" />
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </nav>
+
+            {/* Divisor */}
+            <div className="hidden md:block w-px bg-white/5" />
+
+            {/* Panel de contenido */}
+            <section className="flex-1 min-w-0">
+
+              {/* Dashboard — Estrategia de matching */}
+              {configSection === "dashboard" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Dashboard</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Configuración del comportamiento del dashboard y matching de operaciones.</p>
+                  </div>
+                  <div className="space-y-3">
+                    <p className="text-[11px] font-bold uppercase tracking-widest text-zinc-500">Estrategia de Matching por Cuenta</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {cuentas.map((cuenta: any) => (
+                        <div key={cuenta.id} className="bg-zinc-900/60 border border-zinc-800 rounded-xl p-4 space-y-3">
+                          <div>
+                            <p className="text-[13px] font-black text-zinc-200">{cuenta.nombre}</p>
+                            {cuenta.descripcion && <p className="text-[11px] text-zinc-500 mt-0.5">{cuenta.descripcion}</p>}
+                          </div>
+                          <div className="space-y-2">
+                            <select
+                              value={cuenta.matchingStrategy ?? 'FIFO'}
+                              onChange={async (e) => {
+                                const strategy = e.target.value as 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
+                                await updateCuentaMatchingStrategy(cuenta.id, strategy);
+                                setCuentas(await getMemoryCuentas());
+                                setConfigSaved(prev => ({ ...prev, [cuenta.id]: true }));
+                                setTimeout(() => setConfigSaved(prev => ({ ...prev, [cuenta.id]: false })), 2000);
+                              }}
+                              className="w-full px-3 py-2 bg-zinc-950 border border-zinc-700 rounded-lg text-[12px] text-zinc-200 outline-none focus:border-blue-500 transition-colors appearance-none"
+                            >
+                              <option value="FIFO">FIFO — Más antiguo primero</option>
+                              <option value="LIFO">LIFO — Más reciente primero</option>
+                              <option value="MAX_PROFIT">Máximo Profit — Mayor ganancia primero</option>
+                              <option value="MIN_PROFIT">Mínimo Profit — Menor ganancia primero</option>
+                              <option value="MANUAL">Manual — Selección manual</option>
+                            </select>
+                            {configSaved[cuenta.id] && (
+                              <div className="flex items-center gap-1.5 text-[11px] text-emerald-400">
+                                <Check className="w-3.5 h-3.5" />
+                                <span>Guardado</span>
+                              </div>
+                            )}
+                            <p className="text-[10px] text-zinc-600">
+                              {(cuenta.matchingStrategy ?? 'FIFO') === 'FIFO' && 'Las posiciones se cierran comenzando por las más antiguas (First In, First Out).'}
+                              {(cuenta.matchingStrategy ?? 'FIFO') === 'LIFO' && 'Las posiciones se cierran comenzando por las más recientes (Last In, First Out).'}
+                              {(cuenta.matchingStrategy ?? 'FIFO') === 'MAX_PROFIT' && 'Las posiciones con mayor ganancia potencial se cierran primero.'}
+                              {(cuenta.matchingStrategy ?? 'FIFO') === 'MIN_PROFIT' && 'Las posiciones con menor ganancia potencial (o mayor pérdida) se cierran primero.'}
+                              {(cuenta.matchingStrategy ?? 'FIFO') === 'MANUAL' && 'El usuario selecciona manualmente qué posición cerrar en cada operación.'}
+                            </p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Mi cuenta */}
+              {configSection === "mi-cuenta" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Mi Cuenta</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Información y configuración de tu cuenta de usuario.</p>
+                  </div>
+                  <div className="flex items-center gap-4 p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+                    <div className="w-12 h-12 bg-blue-600 rounded-full flex items-center justify-center shrink-0">
+                      <User className="w-6 h-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="text-[13px] font-black text-zinc-200">Usuario</p>
+                      <p className="text-[11px] text-zinc-500">Cuenta personal — Activa</p>
+                    </div>
+                    <span className="ml-auto px-2 py-0.5 bg-emerald-900/40 border border-emerald-700/40 rounded text-[10px] font-bold text-emerald-400 uppercase">Activo</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Más opciones de cuenta próximamente.</p>
+                </div>
+              )}
+
+              {/* Mi plan */}
+              {configSection === "mi-plan" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Mi Plan</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Información sobre tu plan actual.</p>
+                  </div>
+                  <div className="flex items-center gap-4 p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl">
+                    <Trophy className="w-8 h-8 text-yellow-400 shrink-0" />
+                    <div>
+                      <p className="text-[13px] font-black text-zinc-200">Plan Personal</p>
+                      <p className="text-[11px] text-zinc-500">Acceso completo a todas las funcionalidades.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Gestión de planes próximamente.</p>
+                </div>
+              )}
+
+              {/* Zona de peligro */}
+              {configSection === "zona-peligro" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-red-400">Zona de Peligro</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Acciones irreversibles. Proceder con precaución.</p>
+                  </div>
+                  <div className="p-4 bg-red-950/20 border border-red-900/40 rounded-xl flex items-start gap-3">
+                    <AlertCircle className="w-4 h-4 text-red-400 mt-0.5 shrink-0" />
+                    <div className="space-y-1">
+                      <p className="text-[12px] font-bold text-zinc-200">Restablecer datos</p>
+                      <p className="text-[11px] text-zinc-500">Esta acción eliminará todos los datos en memoria y recargará el estado inicial desde el CSV.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Acciones destructivas próximamente.</p>
+                </div>
+              )}
+
+              {/* Apariencia */}
+              {configSection === "apariencia" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Apariencia</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Personaliza el aspecto visual de la aplicación.</p>
+                  </div>
+                  <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl flex items-center gap-3">
+                    <Palette className="w-4 h-4 text-zinc-400 shrink-0" />
+                    <div>
+                      <p className="text-[12px] font-bold text-zinc-200">Tema oscuro</p>
+                      <p className="text-[11px] text-zinc-500">Activo — Glassmorphism dark.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Temas adicionales próximamente.</p>
+                </div>
+              )}
+
+              {/* Idioma */}
+              {configSection === "idioma" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Idioma</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Selecciona el idioma de la interfaz.</p>
+                  </div>
+                  <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl flex items-center gap-3">
+                    <Languages className="w-4 h-4 text-zinc-400 shrink-0" />
+                    <div>
+                      <p className="text-[12px] font-bold text-zinc-200">Español</p>
+                      <p className="text-[11px] text-zinc-500">Idioma actual de la interfaz.</p>
+                    </div>
+                    <span className="ml-auto px-2 py-0.5 bg-blue-900/40 border border-blue-700/40 rounded text-[10px] font-bold text-blue-400 uppercase">Activo</span>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Soporte multiidioma próximamente.</p>
+                </div>
+              )}
+
+              {/* Regional */}
+              {configSection === "regional" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Regional</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Configuración de zona horaria, moneda y formato de fechas.</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[
+                      { label: "Zona horaria", value: "UTC-3 (Argentina)" },
+                      { label: "Moneda", value: "USD ($)" },
+                      { label: "Formato de fecha", value: "dd/MM/yyyy" },
+                      { label: "Separador decimal", value: "Coma (,)" },
+                    ].map(({ label, value }) => (
+                      <div key={label} className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl flex items-center justify-between">
+                        <div>
+                          <p className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">{label}</p>
+                          <p className="text-[13px] font-black text-zinc-200 mt-0.5">{value}</p>
+                        </div>
+                        <Globe className="w-4 h-4 text-zinc-600" />
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Configuración regional editable próximamente.</p>
+                </div>
+              )}
+
+              {/* Alertas */}
+              {configSection === "alertas" && (
+                <div className="space-y-4">
+                  <div>
+                    <h2 className="text-[13px] font-black uppercase tracking-[0.15em] text-white">Alertas</h2>
+                    <p className="text-[11px] text-zinc-500 mt-1">Configuración de notificaciones y alertas del sistema.</p>
+                  </div>
+                  <div className="p-4 bg-zinc-900/60 border border-zinc-800 rounded-xl flex items-center gap-3">
+                    <Bell className="w-4 h-4 text-zinc-400 shrink-0" />
+                    <div>
+                      <p className="text-[12px] font-bold text-zinc-200">Notificaciones del sistema</p>
+                      <p className="text-[11px] text-zinc-500">Alertas de precios, P&L y eventos de mercado.</p>
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-zinc-600 italic">Sistema de alertas próximamente.</p>
+                </div>
+              )}
+
+            </section>
           </div>
         )}
 

@@ -2,6 +2,22 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v14
+
+### Errores encontrados y corregidos
+
+Sin errores. TSC y lint pasaron en el primer intento.
+
+### Aprendizajes de la sesión
+
+1. **Mover un elemento del FilterBar al navbar requiere editar dos lugares**: el slot del FilterBar donde vivía el elemento, y el div de la derecha del `<nav>`. No alcanza con agregar en uno solo.
+
+2. **La lógica existente dentro de una vista debe migrarse al nuevo panel sin duplicarse**: al pasar la configuración de matching a la sección "Dashboard" del sidebar, se copió el JSX existente dentro del nuevo bloque condicional y se eliminó del anterior. El estado (`configSaved`, `cuentas`) no cambia porque sigue en el mismo componente.
+
+3. **El sidebar de configuraciones es extensible sin refactors**: agregar una nueva sección es agregar un objeto al array del map + un bloque `{configSection === "nueva-seccion" && (...)}` en el panel. Bajo costo de cambio.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v13
 
 ### Errores encontrados y corregidos

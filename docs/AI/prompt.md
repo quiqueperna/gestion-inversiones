@@ -1,11 +1,8 @@
 - ## Necesidades
 
+Mueve el label "Sistema Online" que esta en todas las pantallas al menu superior pegado contra el margen derecho manteniendo los estilos.
 
-Pantalla Nuevo deposito
-- Agregué una nueva cuenta y cuando abro esta pantalla no me aparece en el combo "cuentas" la cuenta recien agregada
-
-Pantalla Dashboard
-- En la tarjeta Balance Total cambiar nombre de "Trade Units abiertas" por "Trades Abiertos"
+Implementa todo lo que esta defindo en /docs/development/modules/config.md que no este ya implementado.
 
 
 ---
@@ -26,4 +23,13 @@ Si te quedaron cosas pendientes guardalas en /bitacora/pending-tasks/pending-tas
 
 Sube uno a la version actual y actualizala en el archivo /docs/AI/new_session.md
 
-Escribe un archivo en /bitacora/prompts con el prompt tipo bitácora, especificando fecha, hora y descripciones.Escribe un archivo en /bitacora/lessons-learned.md tipo bitácora que diga si tuviste errores y qué aprendiste de ellos.  
+Escribe un archivo en /bitacora/prompts con las necesidades que te pedi tipo bitácora, con este formato:
+
+## 22 de Marzo, 2026 — Sesión v11
+
+### Prompt 1
+> "TEXTO DE LAS NECESIDADES"
+
+**Resultado:** 
+
+Escribe un archivo en /bitacora/lessons-learned.md tipo bitácora que diga si tuviste errores y qué aprendiste de ellos.  
