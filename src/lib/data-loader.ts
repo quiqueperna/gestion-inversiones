@@ -286,7 +286,6 @@ export function initializeFromDB(data: {
   accounts?: Array<{ id: number; nombre: string; descripcion: string | null; matchingStrategy: string }>;
   brokers?: Array<{ id: number; nombre: string; descripcion: string | null }>;
 }) {
-  if (memoryState.isInitialized) return;
 
   const executions: Execution[] = data.executions.map((e) => ({
     id: e.id, date: e.date, symbol: e.symbol, qty: e.qty, price: e.price,

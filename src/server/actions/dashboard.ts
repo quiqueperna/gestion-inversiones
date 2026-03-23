@@ -4,29 +4,31 @@
 import fs from 'fs';
 import path from 'path';
 import { eachMonthOfInterval, isSameMonth } from "date-fns";
-import { getMemoryState, initializeMemoryState, initializeFromDB, TradeUnit } from "@/lib/data-loader";
+import { getMemoryState, initializeMemoryState, initializeFromDB, resetMemoryState, TradeUnit } from "@/lib/data-loader";
 import { getInstrumentType } from "@/lib/utils";
 import { db } from "@/server/db";
 
-// Helper to ensure data is loaded (from DB if available, otherwise CSV)
+// Helper: siempre recarga desde DB para reflejar cambios externos.
+// Excepción: si el estado fue inicializado desde CSV (tests), no resetea.
 async function ensureDataLoaded() {
     const state = getMemoryState();
-    if (!state.isInitialized) {
-        const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
-            db.execution.findMany({ orderBy: { date: 'asc' } }),
-            db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
-            db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
-            db.account.findMany(),
-            db.broker.findMany(),
-        ]);
+    if (state.isInitialized && !state.isDBBacked) return state;
 
-        if (dbExecutions.length > 0) {
-            initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers });
-        } else {
-            const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
-            const csvText = fs.readFileSync(csvPath, 'utf-8');
-            initializeMemoryState(csvText, true);
-        }
+    resetMemoryState();
+    const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
+        db.execution.findMany({ orderBy: { date: 'asc' } }),
+        db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
+        db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
+        db.account.findMany(),
+        db.broker.findMany(),
+    ]);
+
+    if (dbExecutions.length > 0) {
+        initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers });
+    } else {
+        const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
+        const csvText = fs.readFileSync(csvPath, 'utf-8');
+        initializeMemoryState(csvText, true);
     }
     return getMemoryState();
 }

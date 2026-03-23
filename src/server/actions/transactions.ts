@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import path from 'path';
 import fs from 'fs';
 import {
-  getMemoryState, initializeMemoryState, initializeFromDB,
+  getMemoryState, initializeMemoryState, initializeFromDB, resetMemoryState,
   removeCashFlow as removeCashFlowMem, updateCashFlow as updateCashFlowMem,
   getAccounts as getAccountsLib, addAccount as addAccountLib, removeAccount as removeAccountLib,
   updateAccount as updateAccountLib, Account,
@@ -14,32 +14,34 @@ import {
   updateAccountStrategy,
 } from "@/lib/data-loader";
 
-// ─── Shared loader (DB first, CSV fallback) ───────────────────────────────────
+// ─── Shared loader: siempre recarga desde DB ─────────────────────────────────
+// Excepción: si el estado fue inicializado desde CSV (tests), no resetea.
 
 async function ensureLoaded() {
   const state = getMemoryState();
-  if (!state.isInitialized) {
-    const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
-      db.execution.findMany({ orderBy: { date: 'asc' } }),
-      db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
-      db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
-      db.account.findMany(),
-      db.broker.findMany(),
-    ]);
+  if (state.isInitialized && !state.isDBBacked) return state;
 
-    if (dbExecutions.length > 0) {
-      initializeFromDB({
-        executions: dbExecutions,
-        tradeUnits: dbTradeUnits,
-        cashFlows: dbCashFlows,
-        accounts: dbAccounts,
-        brokers: dbBrokers,
-      });
-    } else {
-      const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
-      const csvText = fs.readFileSync(csvPath, 'utf-8');
-      initializeMemoryState(csvText, true);
-    }
+  resetMemoryState();
+  const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
+    db.execution.findMany({ orderBy: { date: 'asc' } }),
+    db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
+    db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
+    db.account.findMany(),
+    db.broker.findMany(),
+  ]);
+
+  if (dbExecutions.length > 0) {
+    initializeFromDB({
+      executions: dbExecutions,
+      tradeUnits: dbTradeUnits,
+      cashFlows: dbCashFlows,
+      accounts: dbAccounts,
+      brokers: dbBrokers,
+    });
+  } else {
+    const csvPath = path.join(process.cwd(), 'public/data/initial_operations.csv');
+    const csvText = fs.readFileSync(csvPath, 'utf-8');
+    initializeMemoryState(csvText, true);
   }
   return getMemoryState();
 }
