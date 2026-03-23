@@ -4,17 +4,7 @@ Crea AUTOMÁTICAMENTE dos archivos:
 
 ## 1. Archivo versionado (SIEMPRE con patrón de fecha + versión)
 
-**Ruta:** `/docs/bitacora/sessions_context/YYYY-MM-DD_session_context_vXX.md`
-
-**Patrones automáticos:**
-- `YYYY-MM-DD` = fecha de hoy (USA comando: `date +%Y-%m-%d`)
-- `XX` = número de versión (extrae del archivo ANTERIOR: v11 → v12)
-
-**Si no sabes la versión actual:**
-```bash
-ls -t C:\MisDatos\Trabajo\Repo\gestion-inversiones\docs\bitacora\sessions_context\*.md | head -1
-```
-Busca la última línea que diga `v##` y suma +1.
+**Versiona el archivo:** `/docs/bitacora/sessions_context/YYYY-MM-DD_session_context_vXX.md`
 
 **Contenido requerido:**
 ```markdown

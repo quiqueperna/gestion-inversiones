@@ -1,4 +1,4 @@
-Lee en este orden:
+Lee de forma paralela estos archivos:
 
 1. **Contexto actual:**
    `/docs/bitacora/sessions_context/LASTED.md`
@@ -20,6 +20,24 @@ Lee en este orden:
 5. **Agentes disponibles:**
    `/docs/AI/agents.md`
    (ej: qué agentes puedes usar)
+
+
+No pidas permiso para ejecutar npm run lint, tsc o vitest. Hazlo automáticamente después de cada cambio y    corrige los errores por tu cuenta antes de responder.
+
+## Version Actual: 12 
+
+## Archivo versionado 
+
+- Versiona archivos con este formato.
+
+**Nombre de ejemplo:** `/../YYYY-MM-DD_file_vXX.md`
+
+**Patrones automáticos:**
+- `YYYY-MM-DD` = fecha de hoy (USA comando: `date +%Y-%m-%d`)
+- `XX` = número de versión actual y le sumas 1
+
+
+
 
 
 
