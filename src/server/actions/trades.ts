@@ -1,39 +1,40 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use server";
 
-import fs from 'fs';
-import path from 'path';
-import { getMemoryState, initializeMemoryState, initializeFromDB, resetMemoryState, TradeUnit, Execution, updateAccountStrategy } from "@/lib/data-loader";
+import { getMemoryState, initializeFromDB, resetMemoryState, TradeUnit, Execution, updateAccountStrategy } from "@/lib/data-loader";
 import { getCurrentPriceWithFallback } from "@/lib/prices";
 import { db } from "@/server/db";
+import { getCurrentUserId } from "@/server/actions/get-user";
 
 // Helper: siempre recarga desde DB para reflejar cambios externos.
 // Excepción: si el estado fue inicializado desde CSV (tests), no resetea.
-async function ensureDataLoaded() {
-    const state = getMemoryState();
-    if (state.isInitialized && !state.isDBBacked) return state;
+async function ensureDataLoaded(): Promise<{ state: ReturnType<typeof getMemoryState>; userId: string }> {
+    // Test mode: estado CSV sin DB (no llama Supabase)
+    const testState = getMemoryState('_test_');
+    if (testState.isInitialized && !testState.isDBBacked) return { state: testState, userId: '_test_' };
 
-    resetMemoryState();
+    const userId = await getCurrentUserId();
+    resetMemoryState(userId);
     const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
-        db.execution.findMany({ orderBy: { date: 'asc' } }),
-        db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
-        db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
-        db.account.findMany(),
-        db.broker.findMany(),
+        db.execution.findMany({ where: { userId }, orderBy: { date: 'asc' } }),
+        db.tradeUnit.findMany({ where: { userId }, orderBy: { entryDate: 'asc' } }),
+        db.cashFlow.findMany({ where: { userId }, orderBy: { date: 'desc' } }),
+        db.account.findMany({ where: { userId } }),
+        db.broker.findMany({ where: { userId } }),
     ]);
 
     // Siempre inicializa desde DB aunque esté vacía (nunca fallback a CSV en producción)
-    initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers });
-    return getMemoryState();
+    initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers }, userId);
+    return { state: getMemoryState(userId), userId };
 }
 
 export async function getExecutions() {
-    const state = await ensureDataLoaded();
+    const { state } = await ensureDataLoaded();
     return state.executions;
 }
 
 export async function getTradeUnits() {
-    const state = await ensureDataLoaded();
+    const { state } = await ensureDataLoaded();
 
     const openTUs = state.tradeUnits.filter(t => t.status === 'OPEN');
     if (openTUs.length === 0) return state.tradeUnits;
@@ -67,7 +68,7 @@ export async function getTradeUnits() {
 }
 
 export async function createExecution(data: any) {
-    const state = await ensureDataLoaded();
+    const { state, userId } = await ensureDataLoaded();
     const maxId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
     const newExec: Execution = {
         id: maxId + 1,
@@ -105,6 +106,7 @@ export async function createExecution(data: any) {
             currency: newExec.currency,
             commissions: newExec.commissions,
             exchange_rate: newExec.exchange_rate,
+            userId,
         },
     });
 
@@ -120,7 +122,7 @@ export async function bulkImportExecutions(rows: {
     broker: string;
     account: string;
 }[]): Promise<{ imported: number; errors: string[] }> {
-    const state = await ensureDataLoaded();
+    const { state, userId } = await ensureDataLoaded();
     const errors: string[] = [];
     let maxId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
 
@@ -162,6 +164,7 @@ export async function bulkImportExecutions(rows: {
                     currency: exec.currency,
                     commissions: exec.commissions,
                     exchange_rate: exec.exchange_rate,
+                    userId,
                 },
             }))
         );
@@ -177,13 +180,13 @@ export async function bulkImportExecutions(rows: {
     }
 
     // Forzar recarga completa en la próxima request para recalcular TradeUnits
-    resetMemoryState();
+    resetMemoryState(userId);
 
     return { imported: newExecs.length - errors.length, errors };
 }
 
 export async function deleteExecution(id: number): Promise<boolean> {
-    const state = await ensureDataLoaded();
+    const { state, userId } = await ensureDataLoaded();
     const exists = state.executions.some(o => o.id === id);
     if (!exists) return false;
     state.executions = state.executions.filter(o => o.id !== id);
@@ -195,7 +198,7 @@ export async function deleteExecution(id: number): Promise<boolean> {
 export async function getOpenExecutionsForClosing(symbol: string, side: 'BUY' | 'SELL', account: string, broker: string) {
   // Para cerrar una SELL, buscamos BUYs abiertas. Para cerrar una BUY, buscamos SELLs.
   const oppositeSide = side === 'SELL' ? 'BUY' : 'SELL';
-  const state = await ensureDataLoaded();
+  const { state } = await ensureDataLoaded();
   return state.executions.filter(exec =>
     exec.symbol === symbol.toUpperCase() &&
     exec.side === oppositeSide &&
@@ -226,7 +229,7 @@ export async function closeTradeUnitManually(data: {
   account: string;
   entryExecId: number;
 }) {
-  const state = await ensureDataLoaded();
+  const { state, userId } = await ensureDataLoaded();
 
   const openExec = state.executions.find(exec => exec.id === data.entryExecId);
   if (!openExec) throw new Error('Ejecución de apertura no encontrada');
@@ -325,6 +328,7 @@ export async function closeTradeUnitManually(data: {
         isClosed: newCloseExec.isClosed, remainingQty: newCloseExec.remainingQty,
         currency: newCloseExec.currency, commissions: newCloseExec.commissions,
         exchange_rate: newCloseExec.exchange_rate,
+        userId,
       },
     }),
     db.execution.update({
@@ -353,6 +357,7 @@ export async function closeTradeUnitManually(data: {
             status: resultTU.status, side: resultTU.side,
             entryExecId: resultTU.entryExecId ?? null,
             exitExecId: resultTU.exitExecId ?? null,
+            userId,
           },
         })]),
   ]);
@@ -370,7 +375,7 @@ export async function closeTradeUnitWithQuantity(data: {
   primaryEntryExecId: number;
   strategy?: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL';
 }) {
-  const state = await ensureDataLoaded();
+  const { state, userId } = await ensureDataLoaded();
   // Use actual current time for the close — preserves the user-entered date but stamps real HH:MM
   const now = new Date();
   const [y, m, d] = data.closeDate.split('-').map(Number);
@@ -391,8 +396,7 @@ export async function closeTradeUnitWithQuantity(data: {
   // Si no se pasa strategy, usar la configurada en la cuenta
   let resolvedStrategy = data.strategy;
   if (!resolvedStrategy) {
-    const state2 = getMemoryState();
-    const accountConfig = state2.accounts.find(c => c.nombre === data.account);
+    const accountConfig = state.accounts.find(c => c.nombre === data.account);
     resolvedStrategy = accountConfig?.matchingStrategy ?? 'FIFO';
   }
   const strategy = resolvedStrategy;
@@ -458,6 +462,7 @@ export async function closeTradeUnitWithQuantity(data: {
           isClosed: newOpenExec.isClosed, remainingQty: newOpenExec.remainingQty,
           currency: newOpenExec.currency, commissions: newOpenExec.commissions,
           exchange_rate: newOpenExec.exchange_rate,
+          userId,
         },
       }));
 
@@ -502,6 +507,7 @@ export async function closeTradeUnitWithQuantity(data: {
         isClosed: closeExec.isClosed, remainingQty: closeExec.remainingQty,
         currency: closeExec.currency, commissions: closeExec.commissions,
         exchange_rate: closeExec.exchange_rate,
+        userId,
       },
     }));
 
@@ -541,6 +547,7 @@ export async function closeTradeUnitWithQuantity(data: {
           tna: newTU.tna, broker: newTU.broker, account: newTU.account,
           status: newTU.status, side: newTU.side,
           entryExecId: newTU.entryExecId ?? null, exitExecId: newTU.exitExecId ?? null,
+          userId,
         },
       }));
     }
@@ -569,6 +576,7 @@ export async function closeTradeUnitWithQuantity(data: {
         isClosed: excessExec.isClosed, remainingQty: excessExec.remainingQty,
         currency: excessExec.currency, commissions: excessExec.commissions,
         exchange_rate: excessExec.exchange_rate,
+        userId,
       },
     }));
   }
@@ -582,7 +590,7 @@ export async function closeTradeUnitWithQuantity(data: {
 }
 
 export async function deleteTradeUnit(id: number): Promise<boolean> {
-    const state = await ensureDataLoaded();
+    const { state } = await ensureDataLoaded();
     const idx = state.tradeUnits.findIndex(t => t.id === id);
     if (idx === -1) return false;
     state.tradeUnits.splice(idx, 1);
@@ -600,7 +608,7 @@ export async function updateExecution(id: number, data: Partial<{
   currency: string;
   commissions: number;
 }>): Promise<boolean> {
-  const state = await ensureDataLoaded();
+  const { state } = await ensureDataLoaded();
   const exec = state.executions.find(o => o.id === id);
   if (!exec) return false;
   const newAmount = (data.qty !== undefined && data.price !== undefined)
@@ -659,7 +667,7 @@ type ImportRow = {
 };
 
 export async function previewBulkImport(rows: ImportRow[], manualDecisions: ManualDecision[] = []): Promise<SimulationResult> {
-  const state = await ensureDataLoaded();
+  const { state } = await ensureDataLoaded();
 
   const openDbExecs = state.executions
     .filter(e => !e.isClosed && e.remainingQty > 0.0001)
@@ -689,7 +697,7 @@ export async function confirmBulkImportWithTrades(
   rows: ImportRow[],
   manualDecisions: ManualDecision[] = [],
 ): Promise<{ importedExecs: number; createdTrades: number; errors: string[] }> {
-  const state = await ensureDataLoaded();
+  const { state, userId } = await ensureDataLoaded();
   const errors: string[] = [];
 
   const openDbExecs = state.executions
@@ -720,7 +728,6 @@ export async function confirmBulkImportWithTrades(
   if (!state.isDBBacked) {
     // In test/CSV mode: just push everything into memory
     let maxExecId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
-    let maxTuId = state.tradeUnits.length > 0 ? Math.max(...state.tradeUnits.map(t => t.id)) : 0;
 
     for (const iExec of importSimExecs) {
       state.executions.push({
@@ -740,7 +747,7 @@ export async function confirmBulkImportWithTrades(
         exchange_rate: iExec.exchange_rate,
       });
     }
-    resetMemoryState();
+    resetMemoryState(userId);
     return { importedExecs: importSimExecs.length, createdTrades: trades.length, errors };
   }
 
@@ -771,6 +778,7 @@ export async function confirmBulkImportWithTrades(
         currency: iExec.currency,
         commissions: iExec.commissions,
         exchange_rate: iExec.exchange_rate,
+        userId,
       },
     }));
   }
@@ -842,6 +850,7 @@ export async function confirmBulkImportWithTrades(
             side: 'BUY',
             entryExecId: entryDbId ?? null,
             exitExecId: exitDbId ?? null,
+            userId,
           },
         }));
       }
@@ -871,6 +880,7 @@ export async function confirmBulkImportWithTrades(
             side: 'BUY',
             entryExecId: entryDbIdResolved ?? null,
             exitExecId: null,
+            userId,
           },
         }));
       }
@@ -882,6 +892,6 @@ export async function confirmBulkImportWithTrades(
     if (r.status === 'rejected') errors.push(`Op ${i}: ${r.reason?.message ?? 'Error DB'}`);
   });
 
-  resetMemoryState();
+  resetMemoryState(userId);
   return { importedExecs: importSimExecs.length, createdTrades: trades.length, errors };
 }

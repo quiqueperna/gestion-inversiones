@@ -13,6 +13,7 @@ datasource db {
 
 model Execution {
   id            Int      @id @default(autoincrement())
+  userId        String   @default("")
   date          DateTime
   symbol        String
   qty           Float
@@ -36,10 +37,12 @@ model Execution {
   @@index([symbol])
   @@index([date])
   @@index([broker])
+  @@index([userId])
 }
 
 model CashFlow {
   id          Int      @id @default(autoincrement())
+  userId      String   @default("")
   date        DateTime
   amount      Float
   type        String   // DEPOSIT, WITHDRAWAL
@@ -51,27 +54,35 @@ model CashFlow {
 
   @@index([date])
   @@index([broker])
+  @@index([userId])
 }
 
 model Account {
   id               Int      @id @default(autoincrement())
-  nombre           String   @unique
+  userId           String   @default("")
+  nombre           String
   descripcion      String?
   matchingStrategy String   @default("FIFO")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  @@unique([userId, nombre])
 }
 
 model Broker {
   id          Int      @id @default(autoincrement())
-  nombre      String   @unique
+  userId      String   @default("")
+  nombre      String
   descripcion String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
+
+  @@unique([userId, nombre])
 }
 
 model TradeUnit {
   id              Int      @id @default(autoincrement())
+  userId          String   @default("")
   symbol          String
   qty             Float
   entryDate       DateTime
@@ -101,4 +112,5 @@ model TradeUnit {
   @@index([symbol])
   @@index([exitDate])
   @@index([broker])
+  @@index([userId])
 }

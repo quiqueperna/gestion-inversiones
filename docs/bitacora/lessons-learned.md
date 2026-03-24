@@ -2,6 +2,48 @@
 
 ---
 
+## 24 de Marzo, 2026 — Sesión v26
+
+### Error encontrado y corregido
+
+**Error — `DROP CONSTRAINT` no elimina un `CREATE UNIQUE INDEX`**
+- Causa: En PostgreSQL, `CREATE UNIQUE INDEX` y `ADD CONSTRAINT UNIQUE` crean estructuras distintas. `ALTER TABLE ... DROP CONSTRAINT nombre` solo elimina constraints definidos con `ADD CONSTRAINT`. Si el unique fue creado con `CREATE UNIQUE INDEX`, hay que usar `DROP INDEX`.
+- Señal: `P2002 Unique constraint failed on the fields: ('nombre')` al crear Account/Broker para un segundo usuario.
+- Corrección: `DROP INDEX IF EXISTS "Account_nombre_key"` en vez de `DROP CONSTRAINT IF EXISTS`.
+- Regla: **al eliminar un unique index en PostgreSQL, verificar si fue creado con `CREATE UNIQUE INDEX` (→ `DROP INDEX`) o con `ADD CONSTRAINT UNIQUE` (→ `DROP CONSTRAINT`). Son comandos distintos.**
+
+---
+
+## 24 de Marzo, 2026 — Sesión v25
+
+### Sin errores de lógica
+
+**Punto clave 1 — Singleton global vs Map por usuario:** El patrón `let memoryState = {...}` en un módulo de Node.js persiste para toda la vida del proceso. Si varios usuarios hacen requests, todos tocan el mismo objeto. La solución es `Map<userId, MemState>` donde cada usuario tiene su propio estado. El default `'_test_'` preserva backward compat con tests que no pasan userId.
+
+**Punto clave 2 — Retornar `{ state, userId }` desde ensureDataLoaded():** Al cambiar la firma del helper de carga para retornar también el userId, se evita llamar a `getCurrentUserId()` múltiples veces en la misma función. Esto simplifica el threading y garantiza consistencia entre la carga de estado y las escrituras a DB.
+
+**Punto clave 3 — Migración manual por conflicto de shadow DB:** Las migraciones previas tenían un rename de `Cuenta → Account` que causaba inconsistencia en la shadow database de Prisma. La solución fue aplicar el SQL de migración directamente con `prisma db execute` y registrarlo manualmente en `_prisma_migrations`.
+
+**Punto clave 4 — Account/Broker unique constraint:** Al agregar userId, el constraint `nombre @unique` debe convertirse en `@@unique([userId, nombre])` para que distintos usuarios puedan tener cuentas/brokers con el mismo nombre. Si no se hace, el segundo usuario no puede crear una cuenta "USA" porque ya existe para el primer usuario.
+
+---
+
+## 24 de Marzo, 2026 — Sesión v24
+
+### Error encontrado y corregido
+
+**Error 1 — `result.error` y `result.message` pueden ser `undefined`**
+- Causa: Las Server Actions `login`/`signup` retornan `{ error: string }` o `{ message: string }` o `undefined` (en el caso de redirect). TypeScript strict infiere el tipo de retorno como `string | undefined`, no `string | null`.
+- Señal: `TS2345 Argument of type 'string | undefined' is not assignable to parameter of type 'SetStateAction<string | null>'`
+- Corrección: Usar `result.error ?? null` al hacer setState para coercionar `undefined → null`.
+- Regla: **cuando un Server Action retorna objetos opcionales, usar `?? null` al asignar a estado tipado como `T | null`.**
+
+### Sin otros errores
+
+**Punto clave — Rutas públicas en middleware:** Al agregar protección de rutas, es crítico excluir `/auth/callback` además de `/login`. Si se omite, el callback de OAuth queda bloqueado por el middleware antes de poder crear la sesión, generando un loop de redirección.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v23
 
 ### Sin errores críticos

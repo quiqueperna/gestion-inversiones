@@ -1,5 +1,68 @@
 # Contexto de Sesión - Gestión de Inversiones
-<!-- LEER PRIMERO: el bloque más reciente (v22, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+<!-- LEER PRIMERO: el bloque más reciente (v24, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+
+---
+
+## 24 de Marzo, 2026 — Estado actual tras sesión v25 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker — todos con campo `userId`
+- **Auth:** Supabase SSR completo con aislamiento de datos por usuario
+
+### Cambio principal v25
+Aislamiento de datos por usuario:
+- `prisma/schema.prisma`: campo `userId String @default("")` en todos los modelos; Account/Broker usan `@@unique([userId, nombre])`
+- `src/lib/data-loader.ts`: `memoryState` convertido de singleton a `Map<userId, MemState>`
+- `src/server/actions/get-user.ts`: helper `getCurrentUserId()` via Supabase SSR
+- `trades.ts`, `transactions.ts`, `dashboard.ts`: todas las queries DB filtran por `{ userId }`, todos los creates incluyen `userId`
+- Tests sin cambios: usan default `'_test_'`
+
+### Para arrancar una nueva sesión
+```bash
+supabase start
+taskkill /IM node.exe /F
+npx prisma generate   # si no se ejecutó aún
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
+
+---
+
+## 24 de Marzo, 2026 — Estado actual tras sesión v24 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+- **Auth:** Supabase SSR completo (email/password + Google OAuth)
+
+### Cambio principal v24
+Sistema de autenticación completo:
+- `src/server/actions/auth.ts`: `login`, `signup`, `logout`, `loginWithGoogle`
+- `src/middleware.ts`: protección de rutas — redirige a `/login` si no hay sesión; rutas públicas: `/login`, `/auth/callback`
+- `src/app/login/page.tsx`: formulario login/signup con toggle + botón Google OAuth
+- `src/app/auth/callback/route.ts`: handler GET para OAuth code exchange
+
+### Configuración requerida en Supabase Dashboard (manual)
+1. Authentication > Providers > Google → habilitar con Client ID/Secret
+2. Authentication > URL Configuration → agregar `http://localhost:3000/auth/callback` en Redirect URLs
+
+### Para arrancar una nueva sesión
+```bash
+supabase start
+taskkill /IM node.exe /F
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
+2. **Configurar Google OAuth en Supabase Dashboard** — requiere acción manual del usuario
 
 ---
 

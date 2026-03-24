@@ -8,7 +8,7 @@ import {
   Briefcase, Percent, Clock, PieChart, Wallet,
   Trophy, AlertCircle, Plus, RefreshCw,
   ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X, Settings,
-  User, Globe, Bell, Palette, Languages, BarChart3, Upload
+  User, Globe, Bell, Palette, Languages, BarChart3, Upload, LogOut
 } from "lucide-react";
 import {
   format, startOfToday, endOfToday,
@@ -32,6 +32,7 @@ import BrokersSection from "@/components/brokers/BrokersSection";
 import { getYieldsData as getYields, getStats, getDashboardSummary, getTopStats, getEquityCurve } from "@/server/actions/dashboard";
 import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing, previewBulkImport, confirmBulkImportWithTrades } from "@/server/actions/trades";
 import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryAccounts, addMemoryAccount, removeMemoryAccount, updateMemoryAccount, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker, updateAccountMatchingStrategy } from "@/server/actions/transactions";
+import { logout } from "@/server/actions/auth";
 import TradeForm from "@/components/trades/TradeForm";
 import ImportCSVView from "@/components/trades/ImportCSVView";
 import DropdownMultiCheck from "@/components/ui/DropdownMultiCheck";
@@ -752,6 +753,14 @@ export default function Home() {
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span className="text-[10px] font-bold uppercase text-zinc-400">Sistema Online</span>
           </div>
+          <button
+            onClick={() => logout()}
+            title="Cerrar sesión"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-white/5 bg-zinc-950 text-zinc-500 hover:text-red-400 hover:border-red-900/50 transition-colors"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="text-[10px] font-bold uppercase">Salir</span>
+          </button>
         </div>
       </nav>
 

@@ -38,7 +38,18 @@ export async function middleware(request: NextRequest) {
 
   // Refresca la sesión — IMPORTANTE: no remover esta llamada.
   // Permite que el token se renueve automáticamente.
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  const { pathname } = request.nextUrl;
+  const isPublicRoute =
+    pathname.startsWith("/login") || pathname.startsWith("/auth/callback");
+
+  if (!user && !isPublicRoute) {
+    const loginUrl = new URL("/login", request.url);
+    return NextResponse.redirect(loginUrl);
+  }
 
   return supabaseResponse;
 }

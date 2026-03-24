@@ -5,25 +5,28 @@ import { eachMonthOfInterval, isSameMonth } from "date-fns";
 import { getMemoryState, initializeFromDB, resetMemoryState, TradeUnit } from "@/lib/data-loader";
 import { getInstrumentType } from "@/lib/utils";
 import { db } from "@/server/db";
+import { getCurrentUserId } from "@/server/actions/get-user";
 
 // Helper: siempre recarga desde DB para reflejar cambios externos.
 // Excepción: si el estado fue inicializado desde CSV (tests), no resetea.
-async function ensureDataLoaded() {
-    const state = getMemoryState();
-    if (state.isInitialized && !state.isDBBacked) return state;
+async function ensureDataLoaded(): Promise<{ state: ReturnType<typeof getMemoryState>; userId: string }> {
+    // Test mode: estado CSV sin DB (no llama Supabase)
+    const testState = getMemoryState('_test_');
+    if (testState.isInitialized && !testState.isDBBacked) return { state: testState, userId: '_test_' };
 
-    resetMemoryState();
+    const userId = await getCurrentUserId();
+    resetMemoryState(userId);
     const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
-        db.execution.findMany({ orderBy: { date: 'asc' } }),
-        db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
-        db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
-        db.account.findMany(),
-        db.broker.findMany(),
+        db.execution.findMany({ where: { userId }, orderBy: { date: 'asc' } }),
+        db.tradeUnit.findMany({ where: { userId }, orderBy: { entryDate: 'asc' } }),
+        db.cashFlow.findMany({ where: { userId }, orderBy: { date: 'desc' } }),
+        db.account.findMany({ where: { userId } }),
+        db.broker.findMany({ where: { userId } }),
     ]);
 
     // Siempre inicializa desde DB aunque esté vacía (nunca fallback a CSV en producción)
-    initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers });
-    return getMemoryState();
+    initializeFromDB({ executions: dbExecutions, tradeUnits: dbTradeUnits, cashFlows: dbCashFlows, accounts: dbAccounts, brokers: dbBrokers }, userId);
+    return { state: getMemoryState(userId), userId };
 }
 
 async function computeYearData(state: ReturnType<typeof getMemoryState>, year: number) {
@@ -33,8 +36,7 @@ async function computeYearData(state: ReturnType<typeof getMemoryState>, year: n
     const tradeUnits = state.tradeUnits.filter(t => t.status === 'CLOSED' && t.exitDate && t.exitDate >= startOfYear && t.exitDate <= endOfYear);
     const cashFlows = state.cashFlows.filter(c => c.date >= startOfYear && c.date <= endOfYear);
 
-    const { getAccounts } = await import("@/lib/data-loader");
-    const accountsFromState = getAccounts().map((c: any) => c.nombre);
+    const accountsFromState = state.accounts.map((c: any) => c.nombre);
     const accountsFromData = Array.from(new Set(tradeUnits.map(t => t.account || 'USA')));
     const allAccounts = Array.from(new Set([...accountsFromState, ...accountsFromData]));
 
@@ -74,7 +76,7 @@ async function computeYearData(state: ReturnType<typeof getMemoryState>, year: n
 }
 
 export async function getYieldsData(year?: number | null) {
-    const state = await ensureDataLoaded();
+    const { state } = await ensureDataLoaded();
 
     if (!year) {
         // All years: find distinct years from closed tradeUnits, sort descending
@@ -89,7 +91,7 @@ export async function getYieldsData(year?: number | null) {
 }
 
 export async function getStats(startDate: Date, endDate: Date) {
-    const state = await ensureDataLoaded();
+    const { state } = await ensureDataLoaded();
     const tradeUnits = state.tradeUnits
         .filter(t => t.status === 'CLOSED' && t.exitDate && t.exitDate >= startDate && t.exitDate <= endDate)
         .sort((a, b) => a.exitDate!.getTime() - b.exitDate!.getTime());
@@ -172,7 +174,7 @@ function createEmptyStats() {
 }
 
 export async function getTopStats(startDate?: Date, endDate?: Date) {
-  const state = await ensureDataLoaded();
+  const { state } = await ensureDataLoaded();
   const closedTUs = state.tradeUnits.filter((t: TradeUnit) => {
     if (t.status !== 'CLOSED' || !t.exitDate) return false;
     if (startDate && endDate) return t.exitDate >= startDate && t.exitDate <= endDate;
@@ -195,7 +197,7 @@ export async function getTopStats(startDate?: Date, endDate?: Date) {
 }
 
 export async function getDashboardSummary(startDate?: Date, endDate?: Date) {
-  const state = await ensureDataLoaded();
+  const { state } = await ensureDataLoaded();
   const allTUs = state.tradeUnits;
   const openTUs = allTUs.filter((t: TradeUnit) => t.status === 'OPEN');
   const closedTUs = allTUs.filter((t: TradeUnit) => {
@@ -223,7 +225,7 @@ export async function getDashboardSummary(startDate?: Date, endDate?: Date) {
 }
 
 export async function getEquityCurve(): Promise<{ date: string; equity: number; trade: string }[]> {
-  const state = await ensureDataLoaded();
+  const { state } = await ensureDataLoaded();
   const sorted = [...state.tradeUnits]
     .filter(t => t.status === 'CLOSED' && t.exitDate)
     .sort((a, b) => new Date(a.exitDate!).getTime() - new Date(b.exitDate!).getTime());

@@ -2,10 +2,8 @@
 
 import { db } from "@/server/db";
 import { revalidatePath } from "next/cache";
-import path from 'path';
-import fs from 'fs';
 import {
-  getMemoryState, initializeMemoryState, initializeFromDB, resetMemoryState,
+  getMemoryState, initializeFromDB, resetMemoryState,
   removeCashFlow as removeCashFlowMem, updateCashFlow as updateCashFlowMem,
   getAccounts as getAccountsLib, addAccount as addAccountLib, removeAccount as removeAccountLib,
   updateAccount as updateAccountLib, Account,
@@ -13,21 +11,24 @@ import {
   updateBroker as updateBrokerLib, removeBroker as removeBrokerLib, Broker,
   updateAccountStrategy,
 } from "@/lib/data-loader";
+import { getCurrentUserId } from "@/server/actions/get-user";
 
 // ─── Shared loader: siempre recarga desde DB ─────────────────────────────────
 // Excepción: si el estado fue inicializado desde CSV (tests), no resetea.
 
-async function ensureLoaded() {
-  const state = getMemoryState();
-  if (state.isInitialized && !state.isDBBacked) return state;
+async function ensureLoaded(): Promise<{ state: ReturnType<typeof getMemoryState>; userId: string }> {
+  // Test mode: estado CSV sin DB (no llama Supabase)
+  const testState = getMemoryState('_test_');
+  if (testState.isInitialized && !testState.isDBBacked) return { state: testState, userId: '_test_' };
 
-  resetMemoryState();
+  const userId = await getCurrentUserId();
+  resetMemoryState(userId);
   const [dbExecutions, dbTradeUnits, dbCashFlows, dbAccounts, dbBrokers] = await Promise.all([
-    db.execution.findMany({ orderBy: { date: 'asc' } }),
-    db.tradeUnit.findMany({ orderBy: { entryDate: 'asc' } }),
-    db.cashFlow.findMany({ orderBy: { date: 'desc' } }),
-    db.account.findMany(),
-    db.broker.findMany(),
+    db.execution.findMany({ where: { userId }, orderBy: { date: 'asc' } }),
+    db.tradeUnit.findMany({ where: { userId }, orderBy: { entryDate: 'asc' } }),
+    db.cashFlow.findMany({ where: { userId }, orderBy: { date: 'desc' } }),
+    db.account.findMany({ where: { userId } }),
+    db.broker.findMany({ where: { userId } }),
   ]);
 
   // Siempre inicializa desde DB aunque esté vacía (nunca fallback a CSV en producción)
@@ -37,15 +38,16 @@ async function ensureLoaded() {
     cashFlows: dbCashFlows,
     accounts: dbAccounts,
     brokers: dbBrokers,
-  });
-  return getMemoryState();
+  }, userId);
+  return { state: getMemoryState(userId), userId };
 }
 
 // ─── CashFlow (Prisma) ────────────────────────────────────────────────────────
 
 export async function getCashFlows(broker?: string) {
+  const userId = await getCurrentUserId();
   return await db.cashFlow.findMany({
-    where: broker ? { broker } : undefined,
+    where: broker ? { broker, userId } : { userId },
     orderBy: { date: 'desc' },
   });
 }
@@ -58,6 +60,7 @@ export async function createCashFlow(data: {
   account?: string;
   description?: string;
 }) {
+  const userId = await getCurrentUserId();
   const transaction = await db.cashFlow.create({
     data: {
       date: data.date,
@@ -66,10 +69,11 @@ export async function createCashFlow(data: {
       broker: data.broker,
       account: data.account ?? null,
       description: data.description,
+      userId,
     },
   });
 
-  const state = getMemoryState();
+  const state = getMemoryState(userId);
   if (state.isInitialized) {
     state.cashFlows.push({
       id: transaction.id,
@@ -87,8 +91,9 @@ export async function createCashFlow(data: {
 }
 
 export async function deleteCashFlow(id: number) {
+  const userId = await getCurrentUserId();
   await db.cashFlow.delete({ where: { id } });
-  const state = getMemoryState();
+  const state = getMemoryState(userId);
   if (state.isInitialized) {
     const idx = state.cashFlows.findIndex((c) => c.id === id);
     if (idx !== -1) state.cashFlows.splice(idx, 1);
@@ -106,7 +111,7 @@ export async function addMemoryCashFlow(data: {
   account?: string;
   description?: string;
 }) {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   const parsedDate = new Date(data.date + 'T12:00:00');
 
   if (state.isDBBacked) {
@@ -118,6 +123,7 @@ export async function addMemoryCashFlow(data: {
         broker: data.broker,
         account: data.account ?? null,
         description: data.description,
+        userId,
       },
     });
     const newCf = {
@@ -141,9 +147,9 @@ export async function addMemoryCashFlow(data: {
 }
 
 export async function removeMemoryCashFlow(id: number) {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   if (state.isDBBacked) await db.cashFlow.delete({ where: { id } });
-  return removeCashFlowMem(id);
+  return removeCashFlowMem(id, userId);
 }
 
 export async function updateMemoryCashFlow(id: number, data: {
@@ -154,7 +160,7 @@ export async function updateMemoryCashFlow(id: number, data: {
   account?: string;
   description?: string;
 }) {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   const parsedDate = new Date(data.date + 'T12:00:00');
   const amount = Math.abs(data.amount);
   if (state.isDBBacked) {
@@ -163,26 +169,26 @@ export async function updateMemoryCashFlow(id: number, data: {
       data: { date: parsedDate, amount, type: data.type, broker: data.broker, account: data.account ?? null, description: data.description },
     });
   }
-  return updateCashFlowMem(id, { date: parsedDate, amount, type: data.type, broker: data.broker, account: data.account, description: data.description });
+  return updateCashFlowMem(id, { date: parsedDate, amount, type: data.type, broker: data.broker, account: data.account, description: data.description }, userId);
 }
 
 export async function getMemoryCashFlows(broker?: string) {
-  const state = await ensureLoaded();
+  const { state } = await ensureLoaded();
   return broker ? state.cashFlows.filter((c) => c.broker === broker) : state.cashFlows;
 }
 
 // ─── Accounts ─────────────────────────────────────────────────────────────────
 
 export async function getMemoryAccounts(): Promise<Account[]> {
-  await ensureLoaded();
-  return getAccountsLib();
+  const { userId } = await ensureLoaded();
+  return getAccountsLib(userId);
 }
 
 export async function addMemoryAccount(nombre: string, descripcion?: string): Promise<Account> {
-  const state = await ensureLoaded();
-  const newAccount = addAccountLib(nombre, descripcion);
+  const { state, userId } = await ensureLoaded();
+  const newAccount = addAccountLib(nombre, descripcion, userId);
   if (state.isDBBacked) {
-    const dbRecord = await db.account.create({ data: { nombre, descripcion: descripcion ?? null, matchingStrategy: 'FIFO' } });
+    const dbRecord = await db.account.create({ data: { nombre, descripcion: descripcion ?? null, matchingStrategy: 'FIFO', userId } });
     // Sync DB id back to memory
     newAccount.id = dbRecord.id;
   }
@@ -190,54 +196,54 @@ export async function addMemoryAccount(nombre: string, descripcion?: string): Pr
 }
 
 export async function removeMemoryAccount(id: number): Promise<boolean> {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   if (state.isDBBacked) await db.account.delete({ where: { id } });
-  return removeAccountLib(id);
+  return removeAccountLib(id, userId);
 }
 
 export async function updateMemoryAccount(id: number, nombre: string, descripcion?: string): Promise<boolean> {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   if (state.isDBBacked) {
     await db.account.update({ where: { id }, data: { nombre, descripcion: descripcion ?? null } });
   }
-  return updateAccountLib(id, nombre, descripcion);
+  return updateAccountLib(id, nombre, descripcion, userId);
 }
 
 export async function updateAccountMatchingStrategy(id: number, strategy: 'FIFO' | 'LIFO' | 'MAX_PROFIT' | 'MIN_PROFIT' | 'MANUAL'): Promise<boolean> {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   if (state.isDBBacked) {
     await db.account.update({ where: { id }, data: { matchingStrategy: strategy } });
   }
-  return updateAccountStrategy(id, strategy);
+  return updateAccountStrategy(id, strategy, userId);
 }
 
 // ─── Brokers ──────────────────────────────────────────────────────────────────
 
 export async function getMemoryBrokers(): Promise<Broker[]> {
-  await ensureLoaded();
-  return getBrokersLib();
+  const { userId } = await ensureLoaded();
+  return getBrokersLib(userId);
 }
 
 export async function addMemoryBroker(nombre: string, descripcion?: string): Promise<Broker> {
-  const state = await ensureLoaded();
-  const newBroker = addBrokerLib(nombre, descripcion);
+  const { state, userId } = await ensureLoaded();
+  const newBroker = addBrokerLib(nombre, descripcion, userId);
   if (state.isDBBacked) {
-    const dbRecord = await db.broker.create({ data: { nombre, descripcion: descripcion ?? null } });
+    const dbRecord = await db.broker.create({ data: { nombre, descripcion: descripcion ?? null, userId } });
     newBroker.id = dbRecord.id;
   }
   return newBroker;
 }
 
 export async function updateMemoryBroker(id: number, nombre: string, descripcion?: string): Promise<boolean> {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   if (state.isDBBacked) {
     await db.broker.update({ where: { id }, data: { nombre, descripcion: descripcion ?? null } });
   }
-  return updateBrokerLib(id, nombre, descripcion);
+  return updateBrokerLib(id, nombre, descripcion, userId);
 }
 
 export async function removeMemoryBroker(id: number): Promise<boolean> {
-  const state = await ensureLoaded();
+  const { state, userId } = await ensureLoaded();
   if (state.isDBBacked) await db.broker.delete({ where: { id } });
-  return removeBrokerLib(id);
+  return removeBrokerLib(id, userId);
 }
