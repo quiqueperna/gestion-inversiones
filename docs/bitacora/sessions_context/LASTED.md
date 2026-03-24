@@ -3,6 +3,34 @@
 
 ---
 
+## 23 de Marzo, 2026 — Estado actual tras sesión v23 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+
+### Cambio principal v23
+Reordenamiento de columnas en `ImportCSVView.tsx`:
+- **Tabla ejecuciones**: ID, Fecha Entrada, Símbolo, Lado, Cantidad, Precio, Broker, Cuenta
+- **Tabla trades**: F.Entrada, Símbolo, Lado (Compra), Cantidad, P.Entrada, P.Salida, F.Salida, Días, PnL $, PnL %, TNA, Estado, Broker, Cuenta
+  - Columnas nuevas: Lado, F.Salida, TNA (ya existían en ProjectedTrade)
+  - `TradeRow` extiende con `_exitDate: Date | null`
+  - `SortIcon` del hook usado inline (sin `Th` helper)
+
+### Para arrancar una nueva sesión
+```bash
+supabase start
+taskkill /IM node.exe /F
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
+
+---
+
 ## 23 de Marzo, 2026 — Estado actual tras sesión v22 (referencia para próxima sesión)
 
 ### Stack

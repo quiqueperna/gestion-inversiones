@@ -2,6 +2,14 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v23
+
+### Sin errores críticos
+
+**Punto clave — `SortIcon` como componente interno del hook:** En lugar de exponer `col`/`dir` del hook y pasarlos como props a un componente externo `Th`, es más limpio usar el `SortIcon` que el hook retorna directamente como JSX inline en los `<th>`. Esto evita que el `active` quede desincronizado con el estado interno del hook.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v22
 
 ### Sin errores críticos

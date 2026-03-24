@@ -255,3 +255,12 @@ Creado este archivo `bitacora/prompts.md`.
 > "Pantalla Importar Ejecuciones CSV — La estrategia a utilizar debe ser una leyenda general y no una columna del listado. El listado de ejecuciones a importar debe estar ordenado por fecha y hora descendente. El listado de trades a generar debe estar ordenado por fecha y hora de entrada descendente. Ambos listados deben tener la posibilidad de ordenarse por cualquier columna. Todos los nombres en la pantalla deben estar en español. El listado de trades a cerrar: no debe tener la columna origen. Una ejecucion que debe elegir un trade para cerrar no puede tener fecha y hora mayor al trade a cerrar. En fecha de ejecucion a cerrar se debe mostrar fecha y hora. La columna ATY disp. debe decir cantidad. Debe mostrar la columna symbol. Debe estar ordenado por fecha y hora descendente. Debe permitir ordenar todas las columnas."
 
 **Resultado:** `useSortable<T>` hook genérico + componente `Th` con flechas. Tablas de ejecuciones y trades con sort default desc. Estrategia como leyenda `buildStrategyLegend()`. Tabla candidatos MANUAL: sin Origen, con Símbolo, "Cantidad", fecha+hora, filtro `date <= sellDate`, ordenable. Todo el UI en español.
+
+---
+
+## 23 de Marzo, 2026 — Sesión v23
+
+### Prompt 1
+> "Pantalla Importar Ejecuciones CSV — El listado de ejecuciones a importar: El orden de las columnas debe ser id, fecha entrada, simbolo, lado, cantidad, precio, broker, cuenta. El listado de trades a generar: El orden de las columnas debe ser fecha entrada, simbolo, lado, cantidad, precio de entrada, precio salida, fecha de salida, dias, pnl $, pnl %, tna, estado, broker, cuenta."
+
+**Resultado:** ExecsTable reordenada (ID, Fecha, Símbolo, Lado, Cantidad, Precio, Broker, Cuenta). TradesTable reordenada con nuevas columnas Lado (Compra), F.Salida (exitDate), TNA. Eliminado doble estado en TradesTable. SortIcon del hook usado inline.

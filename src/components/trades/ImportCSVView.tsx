@@ -116,11 +116,10 @@ function ExecsTable({ rows }: { rows: ParsedRow[] }) {
   const { sorted, toggle, SortIcon } = useSortable(items, '_date', 'desc');
 
   const cols: { label: string; col: keyof ExecRow }[] = [
-    { label: '#', col: '_date' },
-    { label: 'Fecha y Hora', col: '_date' },
+    { label: 'Fecha Entrada', col: '_date' },
+    { label: 'Símbolo', col: 'symbol' },
     { label: 'Lado', col: 'side' },
     { label: 'Cantidad', col: 'qty' },
-    { label: 'Símbolo', col: 'symbol' },
     { label: 'Precio', col: 'price' },
     { label: 'Broker', col: 'broker' },
     { label: 'Cuenta', col: 'account' },
@@ -131,9 +130,15 @@ function ExecsTable({ rows }: { rows: ParsedRow[] }) {
       <table className="w-full text-[11px]">
         <thead className="sticky top-0 bg-zinc-900/95 border-b border-white/10">
           <tr>
-            <th className="px-3 py-2 text-left font-bold uppercase tracking-widest text-zinc-500">#</th>
-            {cols.slice(1).map(c => (
-              <Th key={c.label} label={c.label} col={String(c.col)} active={false} dir="desc" onClick={() => toggle(c.col)} />
+            <th className="px-3 py-2 text-left font-bold uppercase tracking-widest text-zinc-500">ID</th>
+            {cols.map(c => (
+              <th
+                key={c.label}
+                onClick={() => toggle(c.col)}
+                className="px-3 py-2 text-left font-bold uppercase tracking-widest text-zinc-500 cursor-pointer select-none hover:text-zinc-300 whitespace-nowrap group"
+              >
+                <span className="flex items-center gap-1">{c.label}<SortIcon c={c.col} /></span>
+              </th>
             ))}
           </tr>
         </thead>
@@ -142,11 +147,11 @@ function ExecsTable({ rows }: { rows: ParsedRow[] }) {
             <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
               <td className="px-3 py-1.5 text-zinc-600">{i + 1}</td>
               <td className="px-3 py-1.5 text-zinc-300 whitespace-nowrap">{fmtDateTime(row._date)}</td>
+              <td className="px-3 py-1.5 font-bold text-white">{row.symbol}</td>
               <td className="px-3 py-1.5">
                 <span className={cn("font-black", row.side === "BUY" ? "text-emerald-400" : "text-red-400")}>{row.side === 'BUY' ? 'Compra' : 'Venta'}</span>
               </td>
               <td className="px-3 py-1.5 text-zinc-200">{row.qty}</td>
-              <td className="px-3 py-1.5 font-bold text-white">{row.symbol}</td>
               <td className="px-3 py-1.5 text-zinc-300">${row.price.toFixed(4)}</td>
               <td className="px-3 py-1.5 text-zinc-400">{row.broker}</td>
               <td className="px-3 py-1.5 text-zinc-400">{row.account}</td>
@@ -160,30 +165,29 @@ function ExecsTable({ rows }: { rows: ParsedRow[] }) {
 
 // ─── Trades Preview Table ─────────────────────────────────────────────────────
 
-type TradeRow = ProjectedTrade & { _entryDate: Date };
+type TradeRow = ProjectedTrade & { _entryDate: Date; _exitDate: Date | null };
 
 function TradesTable({ trades, strategyLegend }: { trades: ProjectedTrade[]; strategyLegend: string }) {
-  const items: TradeRow[] = trades.map(t => ({ ...t, _entryDate: t.entryDate }));
-  const { sorted, toggle } = useSortable(items, '_entryDate', 'desc');
-  const [sortCol, setSortCol] = useState<keyof TradeRow>('_entryDate');
-  const [sortDir, setSortDir] = useState<SortDir>('desc');
-
-  function handleToggle(c: keyof TradeRow) {
-    if (c === sortCol) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
-    else { setSortCol(c); setSortDir('desc'); }
-    toggle(c);
-  }
+  const items: TradeRow[] = trades.map(t => ({
+    ...t,
+    _entryDate: t.entryDate,
+    _exitDate: t.exitDate ?? null,
+  }));
+  const { sorted, toggle, SortIcon } = useSortable(items, '_entryDate', 'desc');
 
   const cols: { label: string; col: keyof TradeRow }[] = [
-    { label: 'Símbolo', col: 'symbol' },
-    { label: 'Estado', col: 'status' },
-    { label: 'Cantidad', col: 'qty' },
     { label: 'F. Entrada', col: '_entryDate' },
+    { label: 'Símbolo', col: 'symbol' },
+    { label: 'Lado', col: 'status' },   // placeholder col for sort — side is always Compra
+    { label: 'Cantidad', col: 'qty' },
     { label: 'P. Entrada', col: 'entryPrice' },
     { label: 'P. Salida', col: 'exitPrice' },
+    { label: 'F. Salida', col: '_exitDate' },
+    { label: 'Días', col: 'days' },
     { label: 'PnL $', col: 'pnlNominal' },
     { label: 'PnL %', col: 'pnlPercent' },
-    { label: 'Días', col: 'days' },
+    { label: 'TNA', col: 'tna' },
+    { label: 'Estado', col: 'status' },
     { label: 'Broker', col: 'broker' },
     { label: 'Cuenta', col: 'account' },
   ];
@@ -202,32 +206,48 @@ function TradesTable({ trades, strategyLegend }: { trades: ProjectedTrade[]; str
         <table className="w-full text-[11px]">
           <thead className="sticky top-0 bg-zinc-900/95 border-b border-white/10">
             <tr>
-              {cols.map(c => (
-                <Th key={c.label} label={c.label} col={String(c.col)} active={sortCol === c.col} dir={sortDir} onClick={() => handleToggle(c.col)} />
+              {cols.map((c, idx) => (
+                // "Lado" column is not sortable (always "Compra"), skip col 2
+                idx === 2
+                  ? <th key={c.label} className="px-3 py-2 text-left font-bold uppercase tracking-widest text-zinc-500 whitespace-nowrap">{c.label}</th>
+                  : <th
+                      key={c.label}
+                      onClick={() => toggle(c.col)}
+                      className="px-3 py-2 text-left font-bold uppercase tracking-widest text-zinc-500 cursor-pointer select-none hover:text-zinc-300 whitespace-nowrap group"
+                    >
+                      <span className="flex items-center gap-1">{c.label}<SortIcon c={c.col} /></span>
+                    </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {sorted.map((trade, i) => (
               <tr key={i} className="border-b border-white/5 hover:bg-white/[0.02]">
+                <td className="px-3 py-1.5 text-zinc-300 whitespace-nowrap">{fmtDateTime(trade._entryDate)}</td>
                 <td className="px-3 py-1.5 font-bold text-white">{trade.symbol}</td>
                 <td className="px-3 py-1.5">
-                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-black uppercase",
-                    trade.status === 'OPEN' ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300')}>
-                    {trade.status === 'OPEN' ? 'Abierto' : 'Cerrado'}
-                  </span>
+                  <span className="font-black text-emerald-400">Compra</span>
                 </td>
                 <td className="px-3 py-1.5 text-zinc-200">{trade.qty}</td>
-                <td className="px-3 py-1.5 text-zinc-300 whitespace-nowrap">{fmtDateTime(trade._entryDate)}</td>
                 <td className="px-3 py-1.5 text-zinc-300">${trade.entryPrice.toFixed(2)}</td>
                 <td className="px-3 py-1.5 text-zinc-300">{trade.exitPrice ? `$${trade.exitPrice.toFixed(2)}` : '—'}</td>
+                <td className="px-3 py-1.5 text-zinc-300 whitespace-nowrap">{trade._exitDate ? fmtDateTime(trade._exitDate) : '—'}</td>
+                <td className="px-3 py-1.5 text-zinc-400">{trade.status === 'CLOSED' ? trade.days : '—'}</td>
                 <td className={cn("px-3 py-1.5 font-semibold", trade.pnlNominal >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                   {trade.status === 'CLOSED' ? `${trade.pnlNominal >= 0 ? '+' : ''}$${trade.pnlNominal.toFixed(2)}` : '—'}
                 </td>
                 <td className={cn("px-3 py-1.5", trade.pnlPercent >= 0 ? 'text-emerald-400' : 'text-red-400')}>
                   {trade.status === 'CLOSED' ? `${trade.pnlPercent >= 0 ? '+' : ''}${trade.pnlPercent.toFixed(2)}%` : '—'}
                 </td>
-                <td className="px-3 py-1.5 text-zinc-400">{trade.status === 'CLOSED' ? trade.days : '—'}</td>
+                <td className={cn("px-3 py-1.5", trade.tna >= 0 ? 'text-emerald-400' : 'text-red-400')}>
+                  {trade.status === 'CLOSED' ? `${trade.tna >= 0 ? '+' : ''}${trade.tna.toFixed(2)}%` : '—'}
+                </td>
+                <td className="px-3 py-1.5">
+                  <span className={cn("px-1.5 py-0.5 rounded text-[10px] font-black uppercase",
+                    trade.status === 'OPEN' ? 'bg-blue-500/20 text-blue-300' : 'bg-emerald-500/20 text-emerald-300')}>
+                    {trade.status === 'OPEN' ? 'Abierto' : 'Cerrado'}
+                  </span>
+                </td>
                 <td className="px-3 py-1.5 text-zinc-400">{trade.broker}</td>
                 <td className="px-3 py-1.5 text-zinc-400">{trade.account}</td>
               </tr>
