@@ -8,7 +8,7 @@ import {
   Briefcase, Percent, Clock, PieChart, Wallet,
   Trophy, AlertCircle, Plus, RefreshCw,
   ArrowUpRight, ArrowDownRight, Layers, Scale, Check, X, Settings,
-  User, Globe, Bell, Palette, Languages, BarChart3
+  User, Globe, Bell, Palette, Languages, BarChart3, Upload
 } from "lucide-react";
 import {
   format, startOfToday, endOfToday,
@@ -30,14 +30,15 @@ import BrokersSection from "@/components/brokers/BrokersSection";
 
 // Server Actions
 import { getYieldsData as getYields, getStats, getDashboardSummary, getTopStats, getEquityCurve } from "@/server/actions/dashboard";
-import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing } from "@/server/actions/trades";
+import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing, bulkImportExecutions } from "@/server/actions/trades";
 import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryAccounts, addMemoryAccount, removeMemoryAccount, updateMemoryAccount, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker, updateAccountMatchingStrategy } from "@/server/actions/transactions";
 import TradeForm from "@/components/trades/TradeForm";
+import ImportCSVView from "@/components/trades/ImportCSVView";
 import DropdownMultiCheck from "@/components/ui/DropdownMultiCheck";
 import { exportToCSV, downloadCSV } from "@/lib/csv-exporter";
 
 // Tipos
-type View = "dashboard" | "analytics" | "transactions" | "trade-units" | "cuentas" | "brokers" | "nueva-trans" | "ie" | "movimientos" | "configuraciones";
+type View = "dashboard" | "analytics" | "transactions" | "trade-units" | "cuentas" | "brokers" | "nueva-trans" | "ie" | "movimientos" | "configuraciones" | "importar-csv";
 
 export default function Home() {
   // Estado Global
@@ -178,7 +179,7 @@ export default function Home() {
   }, [view]);
 
   const navigateTo = (v: View) => { setPrevView(view); setView(v); };
-  const navigateBack = () => setView(prevView === "nueva-trans" || prevView === "ie" || prevView === "cuentas" || prevView === "brokers" || prevView === "movimientos" || prevView === "configuraciones" ? "dashboard" : prevView);
+  const navigateBack = () => setView(prevView === "nueva-trans" || prevView === "ie" || prevView === "cuentas" || prevView === "brokers" || prevView === "movimientos" || prevView === "configuraciones" || prevView === "importar-csv" ? "dashboard" : prevView);
 
   // Sync year multicheck → dateFilter range for stats and matrix
   const handleYearsChange = (years: string[]) => {
@@ -727,6 +728,14 @@ export default function Home() {
               <Plus className="w-3.5 h-3.5" />
               Nueva Trans.
             </button>
+            <button
+              onClick={() => navigateTo("importar-csv")}
+              className={cn("flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all",
+                view === "importar-csv" ? "bg-white/10 text-white" : "text-zinc-500 hover:text-zinc-300")}
+            >
+              <Upload className="w-3.5 h-3.5" />
+              Importar CSV
+            </button>
             <div className="w-px h-4 bg-white/10 mx-1" />
             <button onClick={() => setView("configuraciones")}
               className={cn("flex items-center gap-2 px-4 py-1.5 rounded-lg text-[11px] font-bold uppercase tracking-wide transition-all",
@@ -772,7 +781,7 @@ export default function Home() {
       <main className="p-6 max-w-[1600px] mx-auto space-y-6">
 
         {/* Filter Bar — oculto en vista Cuentas, Nueva Exec, I/E y Configuraciones */}
-        {view !== "cuentas" && view !== "brokers" && view !== "nueva-trans" && view !== "ie" && view !== "configuraciones" && (
+        {view !== "cuentas" && view !== "brokers" && view !== "nueva-trans" && view !== "ie" && view !== "configuraciones" && view !== "importar-csv" && (
           <FilterBar
             dateFilter={dateFilter}
             onDateFilterChange={setDateFilter}
@@ -1396,6 +1405,20 @@ export default function Home() {
               onSave={handleSaveCashFlow}
               brokers={brokers.map((b: any) => b.nombre)}
               accounts={accounts.map((c: any) => c.nombre)}
+            />
+          </div>
+        )}
+
+        {/* --- IMPORTAR CSV --- */}
+        {view === "importar-csv" && (
+          <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 px-2">
+            <ImportCSVView
+              onClose={() => navigateBack()}
+              onImport={async (rows) => {
+                await bulkImportExecutions(rows);
+                navigateBack();
+                await fetchData();
+              }}
             />
           </div>
         )}

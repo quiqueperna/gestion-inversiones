@@ -2,6 +2,18 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v19
+
+### Sin errores
+
+Sesión limpia. El parser de fechas `mm/dd/yy hh:mm:ss` requiere cuidado con el año de 2 dígitos (asumido como 20XX). Se usó regex para garantizar el parseo correcto en lugar de `new Date(string)` que es frágil con ese formato.
+
+**Punto clave:** El parsing del CSV se hace en el cliente (componente React) antes de llamar al server action. Esto permite mostrar el preview sin roundtrip al servidor, y el server action solo recibe rows ya validadas.
+
+**Observación:** `bulkImportExecutions` llama `resetMemoryState()` al final para forzar recarga completa en la próxima request, lo cual es necesario para que el motor de TradeUnits recalcule los matchings con las nuevas ejecuciones.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v18
 
 ### Sin errores de lógica

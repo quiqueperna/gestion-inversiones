@@ -1,5 +1,43 @@
 # Contexto de Sesión - Gestión de Inversiones
-<!-- LEER PRIMERO: el bloque más reciente (v18, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+<!-- LEER PRIMERO: el bloque más reciente (v19, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+
+---
+
+## 23 de Marzo, 2026 — Estado actual tras sesión v19 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** Supabase local → todas las entidades persisten en BD
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+
+### Modelo de persistencia (completo)
+| Entidad | Tabla DB | Persiste |
+|---|---|---|
+| Execution | `Execution` | ✅ create/delete/update/bulk-import |
+| TradeUnit | `TradeUnit` | ✅ delete/close |
+| CashFlow | `CashFlow` | ✅ create/delete/update |
+| Account | `Account` | ✅ create/delete/update/strategy |
+| Broker | `Broker` | ✅ create/delete/update |
+
+### Cambio principal v19
+Importación masiva de ejecuciones desde CSV:
+- `src/lib/csv-import.ts` — parser cliente: formato `mm/dd/yy hh:mm:ss`, TSV/CSV autodetect
+- `bulkImportExecutions()` en `trades.ts` — server action que crea todas las ejecuciones en DB
+- `src/components/trades/ImportCSVView.tsx` — UI con drag&drop, preview table, confirmación
+- Botón "Importar CSV" en toolbar de la app
+- Combos de Broker/Account en TradeForm y CashFlowForm ahora cargan desde BD (sin hardcode)
+
+### Para arrancar una nueva sesión
+```bash
+supabase start   # si Supabase local no está activo
+taskkill /IM node.exe /F  # Windows
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
 
 ---
 

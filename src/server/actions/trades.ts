@@ -111,6 +111,77 @@ export async function createExecution(data: any) {
     return newExec;
 }
 
+export async function bulkImportExecutions(rows: {
+    date: string;
+    side: 'BUY' | 'SELL';
+    qty: number;
+    symbol: string;
+    price: number;
+    broker: string;
+    account: string;
+}[]): Promise<{ imported: number; errors: string[] }> {
+    const state = await ensureDataLoaded();
+    const errors: string[] = [];
+    let maxId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
+
+    const newExecs: Execution[] = rows.map(row => {
+        maxId += 1;
+        return {
+            id: maxId,
+            date: new Date(row.date),
+            symbol: row.symbol.toUpperCase(),
+            qty: row.qty,
+            price: row.price,
+            amount: Math.abs(row.qty * row.price),
+            broker: row.broker,
+            account: row.account || 'USA',
+            side: row.side,
+            remainingQty: row.qty,
+            isClosed: false,
+            currency: 'USD',
+            commissions: 0,
+            exchange_rate: 1,
+        };
+    });
+
+    if (state.isDBBacked) {
+        const results = await Promise.allSettled(
+            newExecs.map(exec => db.execution.create({
+                data: {
+                    id: exec.id,
+                    date: exec.date,
+                    symbol: exec.symbol,
+                    qty: exec.qty,
+                    price: exec.price,
+                    amount: exec.amount,
+                    broker: exec.broker,
+                    account: exec.account,
+                    side: exec.side,
+                    isClosed: exec.isClosed,
+                    remainingQty: exec.remainingQty,
+                    currency: exec.currency,
+                    commissions: exec.commissions,
+                    exchange_rate: exec.exchange_rate,
+                },
+            }))
+        );
+        results.forEach((r, i) => {
+            if (r.status === 'rejected') {
+                errors.push(`Fila ${i + 1} (${newExecs[i].symbol}): ${r.reason?.message ?? 'Error DB'}`);
+            } else {
+                state.executions.push(newExecs[i]);
+            }
+        });
+    } else {
+        state.executions.push(...newExecs);
+    }
+
+    // Forzar recarga completa en la próxima request para recalcular TradeUnits
+    resetMemoryState();
+
+    return { imported: newExecs.length - errors.length, errors };
+}
+
 export async function deleteExecution(id: number): Promise<boolean> {
     const state = await ensureDataLoaded();
     const exists = state.executions.some(o => o.id === id);
