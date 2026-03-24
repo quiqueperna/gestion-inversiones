@@ -2,6 +2,16 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v20
+
+### Sin errores
+
+La validación de broker/cuenta requiere que las listas lleguen al parser como parámetros opcionales. El truco es pasarlos como `undefined` cuando están vacíos para no rechazar filas en entornos sin BD configurada.
+
+**Punto clave:** Los errores de una fila se acumulan en array antes de decidir si es inválida. Esto permite mostrar múltiples razones en la columna Razón en vez de cortar al primer error.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v19
 
 ### Sin errores

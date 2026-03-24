@@ -1419,6 +1419,8 @@ export default function Home() {
                 navigateBack();
                 await fetchData();
               }}
+              brokers={brokers.map((b: any) => b.nombre)}
+              accounts={accounts.map((c: any) => c.nombre)}
             />
           </div>
         )}

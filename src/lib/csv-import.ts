@@ -29,8 +29,13 @@ function parseExecDate(raw: string): Date {
  * Columnas esperadas (header obligatorio):
  *   Exec Time | Side | Qty | Symbol | Net Price | Broker | Account
  * Separador: tab (TSV) o coma (CSV), autodetectado.
+ * validBrokers/validAccounts: si se pasan, valida que broker/account existan.
  */
-export function parseImportCSV(text: string): ParsedRow[] {
+export function parseImportCSV(
+  text: string,
+  validBrokers?: string[],
+  validAccounts?: string[],
+): ParsedRow[] {
   const lines = text.split(/\r?\n/).filter(l => l.trim().length > 0);
   if (lines.length < 2) return [];
 
@@ -58,21 +63,29 @@ export function parseImportCSV(text: string): ParsedRow[] {
     const broker  = idxBroker >= 0 ? (cols[idxBroker] ?? '').trim() : '';
     const account = idxAccount >= 0 ? (cols[idxAccount] ?? '').trim() : '';
 
-    try {
-      const date = parseExecDate(rawDate);
-      if (rawSide !== 'BUY' && rawSide !== 'SELL') throw new Error(`Side inválido: "${rawSide}"`);
-      const qty = parseFloat(rawQty);
-      if (isNaN(qty) || qty === 0) throw new Error(`Qty inválido: "${rawQty}"`);
-      const price = parseFloat(rawPrice);
-      if (isNaN(price) || price <= 0) throw new Error(`Precio inválido: "${rawPrice}"`);
-      if (!symbol) throw new Error('Symbol vacío');
+    const errors: string[] = [];
+    let date: Date = new Date();
+    let side: 'BUY' | 'SELL' = 'BUY';
+    let qty = 0;
+    let price = 0;
 
-      rows.push({ rawDate, date, side: rawSide as 'BUY' | 'SELL', qty: Math.abs(qty), symbol, price, broker, account });
-    } catch (e) {
-      rows.push({
-        rawDate, date: new Date(), side: 'BUY', qty: 0, symbol: '', price: 0, broker, account,
-        error: e instanceof Error ? e.message : 'Error desconocido',
-      });
+    try { date = parseExecDate(rawDate); } catch (e) { errors.push(e instanceof Error ? e.message : 'Fecha inválida'); }
+    if (rawSide !== 'BUY' && rawSide !== 'SELL') errors.push(`Side inválido: "${rawSide}"`);
+    else side = rawSide as 'BUY' | 'SELL';
+    const parsedQty = parseFloat(rawQty);
+    if (isNaN(parsedQty) || parsedQty === 0) errors.push(`Qty inválido: "${rawQty}"`);
+    else qty = Math.abs(parsedQty);
+    const parsedPrice = parseFloat(rawPrice);
+    if (isNaN(parsedPrice) || parsedPrice <= 0) errors.push(`Precio inválido: "${rawPrice}"`);
+    else price = parsedPrice;
+    if (!symbol) errors.push('Symbol vacío');
+    if (validBrokers && broker && !validBrokers.includes(broker)) errors.push(`Broker "${broker}" no existe`);
+    if (validAccounts && account && !validAccounts.includes(account)) errors.push(`Cuenta "${account}" no existe`);
+
+    if (errors.length > 0) {
+      rows.push({ rawDate, date, side, qty, symbol, price, broker, account, error: errors.join(' · ') });
+    } else {
+      rows.push({ rawDate, date, side, qty, symbol, price, broker, account });
     }
   }
 

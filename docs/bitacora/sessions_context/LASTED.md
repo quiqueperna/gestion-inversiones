@@ -3,6 +3,33 @@
 
 ---
 
+## 23 de Marzo, 2026 — Estado actual tras sesión v20 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Motor de datos:** Supabase local → todas las entidades persisten en BD
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+
+### Cambio principal v20
+Importación CSV completa con validación de broker/cuenta contra BD:
+- Parser valida broker y account contra listas de la BD (error específico si no existen)
+- UI muestra dos tablas separadas: filas válidas + filas inválidas con columna "Razón"
+- `ImportCSVView` recibe `brokers[]` y `accounts[]` props desde page.tsx
+
+### Para arrancar una nueva sesión
+```bash
+supabase start
+taskkill /IM node.exe /F
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
+
+---
+
 ## 23 de Marzo, 2026 — Estado actual tras sesión v19 (referencia para próxima sesión)
 
 ### Stack
