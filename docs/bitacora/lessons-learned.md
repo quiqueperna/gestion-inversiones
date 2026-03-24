@@ -2,6 +2,18 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v22
+
+### Sin errores críticos
+
+**Punto clave 1 — Hook genérico `useSortable<T>`:** Al tipar el hook con genérico y usar `keyof T` para la columna, el compilador garantiza que solo se usan campos válidos del tipo. Evitar cualquier `as any` en el comparador: usar `a[col] < b[col]` directamente con string/number/Date funciona bien en TypeScript estricto.
+
+**Punto clave 2 — Filtro de candidatos por fecha:** El requisito "una ejecución no puede cerrar un trade con fecha posterior" se implementa como un simple `.filter(c => c.date <= sellDate)` antes de renderizar la tabla. El filtro es en la capa UI, no en el simulador, para mantener el motor puro.
+
+**Punto clave 3 — Leyenda de estrategia multi-cuenta:** Agrupar por account y construir la leyenda requiere deduplicar (un trade OPEN y uno CLOSED de la misma cuenta no deben aparecer dos veces). Usar `Map<account, strategy>` y luego `Array.from(map)` garantiza unicidad.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v21
 
 ### Sin errores críticos

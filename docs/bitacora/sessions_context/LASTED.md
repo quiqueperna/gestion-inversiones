@@ -1,5 +1,33 @@
 # Contexto de Sesión - Gestión de Inversiones
-<!-- LEER PRIMERO: el bloque más reciente (v19, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+<!-- LEER PRIMERO: el bloque más reciente (v22, arriba del todo) es el estado actual. Los bloques anteriores son histórico. -->
+
+---
+
+## 23 de Marzo, 2026 — Estado actual tras sesión v22 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+
+### Cambio principal v22
+Polish UI de `ImportCSVView.tsx`:
+- `useSortable<T>` hook: todas las tablas ordenables por cualquier columna con ▲▼ en headers
+- Tabla ejecuciones: orden default fecha desc
+- Tabla trades: orden default entryDate desc; estrategia como leyenda general (no columna); `buildStrategyLegend()` muestra "cuenta1: FIFO · cuenta2: LIFO"
+- Tabla candidatos MANUAL: sin columna Origen; con columna Símbolo; "Cantidad" (antes "ATY disp."); fecha+hora en columna fecha; filtra candidatos con `date <= sellDate`; orden desc
+- Todo el UI en español
+
+### Para arrancar una nueva sesión
+```bash
+supabase start
+taskkill /IM node.exe /F
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
 
 ---
 
