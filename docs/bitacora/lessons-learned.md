@@ -2,6 +2,20 @@
 
 ---
 
+## 23 de Marzo, 2026 — Sesión v21
+
+### Sin errores críticos
+
+**Punto clave 1 — Motor de simulación como función pura:** El simulador no toca DB ni memoria global. Recibe todo lo necesario como parámetros y retorna la proyección. Esto permite llamarlo tanto para preview como para confirm sin efectos secundarios, y facilita tests.
+
+**Punto clave 2 — Cross-import matching:** Para que un BUY y SELL del mismo lote se puedan matchear entre sí, hay que procesar las filas en orden cronológico y mantener el inventario durante el loop. Un BUY importado entra al inventario inmediatamente y puede ser consumido por un SELL posterior en el mismo lote.
+
+**Punto clave 3 — Estado de OPEN trades en el preview:** Cuando un BUY se matchea parcialmente, el ProjectedTrade OPEN se actualiza (no se elimina y crea uno nuevo). Esto mantiene la cantidad correcta en la vista previa.
+
+**Punto clave 4 — Confirm action re-ejecuta simulación:** En lugar de serializar el resultado de preview y pasarlo al confirm, se re-ejecuta la simulación con las mismas decisiones. Esto evita problemas de serialización de tipos complejos y garantiza consistencia con el estado actual de la BD.
+
+---
+
 ## 23 de Marzo, 2026 — Sesión v20
 
 ### Sin errores

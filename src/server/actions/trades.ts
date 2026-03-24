@@ -640,3 +640,248 @@ export const updateOperation = updateExecution;
 export async function getOpenOperationsForClosing(symbol: string, side: 'BUY' | 'SELL', account?: string, broker?: string) {
   return getOpenExecutionsForClosing(symbol, side, account || 'USA', broker || 'AMR');
 }
+
+// ─── Bulk Import with Trade Generation ───────────────────────────────────────
+
+import { simulateTradeMatching, type ManualDecision, type SimulationResult } from '@/lib/trade-simulator';
+
+export type { SimulationResult, ManualDecision };
+
+type ImportRow = {
+  ref: string;
+  date: string; // ISO string
+  side: 'BUY' | 'SELL';
+  qty: number;
+  symbol: string;
+  price: number;
+  broker: string;
+  account: string;
+};
+
+export async function previewBulkImport(rows: ImportRow[], manualDecisions: ManualDecision[] = []): Promise<SimulationResult> {
+  const state = await ensureDataLoaded();
+
+  const openDbExecs = state.executions
+    .filter(e => !e.isClosed && e.remainingQty > 0.0001)
+    .map(e => ({
+      id: e.id,
+      date: e.date,
+      symbol: e.symbol,
+      qty: e.qty,
+      price: e.price,
+      broker: e.broker,
+      account: e.account,
+      remainingQty: e.remainingQty,
+      currency: e.currency,
+      exchange_rate: e.exchange_rate,
+      commissions: e.commissions,
+    }));
+
+  const importRows = rows.map(r => ({
+    ...r,
+    date: new Date(r.date),
+  }));
+
+  return simulateTradeMatching(importRows, openDbExecs, state.accounts, manualDecisions);
+}
+
+export async function confirmBulkImportWithTrades(
+  rows: ImportRow[],
+  manualDecisions: ManualDecision[] = [],
+): Promise<{ importedExecs: number; createdTrades: number; errors: string[] }> {
+  const state = await ensureDataLoaded();
+  const errors: string[] = [];
+
+  const openDbExecs = state.executions
+    .filter(e => !e.isClosed && e.remainingQty > 0.0001)
+    .map(e => ({
+      id: e.id,
+      date: e.date,
+      symbol: e.symbol,
+      qty: e.qty,
+      price: e.price,
+      broker: e.broker,
+      account: e.account,
+      remainingQty: e.remainingQty,
+      currency: e.currency,
+      exchange_rate: e.exchange_rate,
+      commissions: e.commissions,
+    }));
+
+  const importRowsWithDate = rows.map(r => ({ ...r, date: new Date(r.date) }));
+  const { trades } = simulateTradeMatching(importRowsWithDate, openDbExecs, state.accounts, manualDecisions);
+
+  // Re-run to get updated SimExec state (remainingQty after matching)
+  const { buildSimExecsSnapshot } = await import('@/lib/trade-simulator');
+  const { allSimExecs, importSimExecs } = buildSimExecsSnapshot(
+    importRowsWithDate, openDbExecs, state.accounts, manualDecisions
+  );
+
+  if (!state.isDBBacked) {
+    // In test/CSV mode: just push everything into memory
+    let maxExecId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
+    let maxTuId = state.tradeUnits.length > 0 ? Math.max(...state.tradeUnits.map(t => t.id)) : 0;
+
+    for (const iExec of importSimExecs) {
+      state.executions.push({
+        id: ++maxExecId,
+        date: iExec.date,
+        symbol: iExec.symbol,
+        qty: iExec.qty,
+        price: iExec.price,
+        amount: iExec.price * iExec.qty,
+        broker: iExec.broker,
+        account: iExec.account,
+        side: iExec.side,
+        remainingQty: iExec.remainingQty,
+        isClosed: iExec.remainingQty <= 0.0001,
+        currency: iExec.currency,
+        commissions: iExec.commissions,
+        exchange_rate: iExec.exchange_rate,
+      });
+    }
+    resetMemoryState();
+    return { importedExecs: importSimExecs.length, createdTrades: trades.length, errors };
+  }
+
+  const dbOps: Promise<unknown>[] = [];
+  let maxExecId = state.executions.length > 0 ? Math.max(...state.executions.map(e => e.id)) : 0;
+  let maxTuId = state.tradeUnits.length > 0 ? Math.max(...state.tradeUnits.map(t => t.id)) : 0;
+
+  // Map: simRef → assigned DB id (for cross-referencing)
+  const refToDbId = new Map<string, number>();
+
+  // 1. Create all import executions in DB
+  for (const iExec of importSimExecs) {
+    const dbId = ++maxExecId;
+    refToDbId.set(iExec.ref, dbId);
+    dbOps.push(db.execution.create({
+      data: {
+        id: dbId,
+        date: iExec.date,
+        symbol: iExec.symbol,
+        qty: iExec.qty,
+        price: iExec.price,
+        amount: iExec.price * iExec.qty,
+        broker: iExec.broker,
+        account: iExec.account,
+        side: iExec.side,
+        remainingQty: Math.max(0, iExec.remainingQty),
+        isClosed: iExec.remainingQty <= 0.0001,
+        currency: iExec.currency,
+        commissions: iExec.commissions,
+        exchange_rate: iExec.exchange_rate,
+      },
+    }));
+  }
+
+  // 2. Update DB open execs that were partially/fully consumed
+  const dbExecsAfterSim = allSimExecs.filter(e => e.isFromDB);
+  for (const dbExec of dbExecsAfterSim) {
+    const original = openDbExecs.find(o => o.id === dbExec.dbId);
+    if (!original) continue;
+    if (Math.abs(dbExec.remainingQty - original.remainingQty) > 0.0001) {
+      dbOps.push(db.execution.update({
+        where: { id: dbExec.dbId! },
+        data: {
+          remainingQty: Math.max(0, dbExec.remainingQty),
+          isClosed: dbExec.remainingQty <= 0.0001,
+        },
+      }));
+    }
+  }
+
+  // 3. Create/update TradeUnit records from projected trades
+  for (const trade of trades) {
+    const entryDbId = trade.dbEntryExecId ?? refToDbId.get(trade.entryExecRef);
+    const exitDbId = trade.dbExitExecId ?? (trade.exitExecRef ? refToDbId.get(trade.exitExecRef) : undefined);
+
+    if (trade.status === 'CLOSED') {
+      // Check if there's an existing open TradeUnit for the entry exec (DB exec that got closed)
+      const existingOpenTU = trade.dbEntryExecId
+        ? state.tradeUnits.find(t => t.status === 'OPEN' && t.entryExecId === trade.dbEntryExecId)
+        : undefined;
+
+      if (existingOpenTU) {
+        dbOps.push(db.tradeUnit.update({
+          where: { id: existingOpenTU.id },
+          data: {
+            exitDate: trade.exitDate,
+            exitPrice: trade.exitPrice,
+            exitAmount: trade.exitAmount,
+            qty: trade.qty,
+            entryAmount: trade.entryAmount,
+            days: trade.days,
+            pnlNominal: trade.pnlNominal,
+            pnlPercent: trade.pnlPercent,
+            tna: trade.tna,
+            status: 'CLOSED',
+            exitExecId: exitDbId ?? null,
+          },
+        }));
+      } else {
+        const tuId = ++maxTuId;
+        dbOps.push(db.tradeUnit.create({
+          data: {
+            id: tuId,
+            symbol: trade.symbol,
+            qty: trade.qty,
+            entryDate: trade.entryDate,
+            exitDate: trade.exitDate ?? null,
+            entryPrice: trade.entryPrice,
+            exitPrice: trade.exitPrice ?? null,
+            entryAmount: trade.entryAmount,
+            exitAmount: trade.exitAmount ?? null,
+            days: trade.days,
+            pnlNominal: trade.pnlNominal,
+            pnlPercent: trade.pnlPercent,
+            tna: trade.tna,
+            broker: trade.broker,
+            account: trade.account,
+            status: 'CLOSED',
+            side: 'BUY',
+            entryExecId: entryDbId ?? null,
+            exitExecId: exitDbId ?? null,
+          },
+        }));
+      }
+    } else {
+      // OPEN trade: only for new import BUYs (DB opens already have their TradeUnit)
+      if (!trade.dbEntryExecId) {
+        const tuId = ++maxTuId;
+        const entryDbIdResolved = refToDbId.get(trade.entryExecRef);
+        dbOps.push(db.tradeUnit.create({
+          data: {
+            id: tuId,
+            symbol: trade.symbol,
+            qty: trade.qty,
+            entryDate: trade.entryDate,
+            exitDate: null,
+            entryPrice: trade.entryPrice,
+            exitPrice: null,
+            entryAmount: trade.entryAmount,
+            exitAmount: null,
+            days: 0,
+            pnlNominal: 0,
+            pnlPercent: 0,
+            tna: 0,
+            broker: trade.broker,
+            account: trade.account,
+            status: 'OPEN',
+            side: 'BUY',
+            entryExecId: entryDbIdResolved ?? null,
+            exitExecId: null,
+          },
+        }));
+      }
+    }
+  }
+
+  const results = await Promise.allSettled(dbOps);
+  results.forEach((r, i) => {
+    if (r.status === 'rejected') errors.push(`Op ${i}: ${r.reason?.message ?? 'Error DB'}`);
+  });
+
+  resetMemoryState();
+  return { importedExecs: importSimExecs.length, createdTrades: trades.length, errors };
+}

@@ -3,6 +3,34 @@
 
 ---
 
+## 23 de Marzo, 2026 — Estado actual tras sesión v21 (referencia para próxima sesión)
+
+### Stack
+- **Next.js 15** App Router, TypeScript strict, Tailwind CSS dark glassmorphism
+- **Prisma:** activo para Execution, TradeUnit, CashFlow, Account, Broker
+
+### Cambio principal v21
+Motor de simulación de trades para importación masiva:
+- `src/lib/trade-simulator.ts`: motor puro; soporta FIFO, LIFO, MAX_PROFIT, MIN_PROFIT, MANUAL; cross-import matching
+- `previewBulkImport()` / `confirmBulkImportWithTrades()` en trades.ts
+- `ImportCSVView` rediseñado: 5 pasos (upload → preview → manual → final-review → done)
+- Secciones colapsables para ejecuciones y trades
+- Flow interactivo para estrategia MANUAL (candidatos BUY con PnL estimado)
+
+### Para arrancar una nueva sesión
+```bash
+supabase start
+taskkill /IM node.exe /F
+npm run dev
+npx tsc --noEmit  # 0 errores
+npm run test      # 42 tests
+```
+
+### Pendientes
+1. **Sidebar lateral** — P3
+
+---
+
 ## 23 de Marzo, 2026 — Estado actual tras sesión v20 (referencia para próxima sesión)
 
 ### Stack

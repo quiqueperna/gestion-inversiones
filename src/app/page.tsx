@@ -30,7 +30,7 @@ import BrokersSection from "@/components/brokers/BrokersSection";
 
 // Server Actions
 import { getYieldsData as getYields, getStats, getDashboardSummary, getTopStats, getEquityCurve } from "@/server/actions/dashboard";
-import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing, bulkImportExecutions } from "@/server/actions/trades";
+import { getExecutions, getTradeUnits, createExecution, deleteExecution, deleteTradeUnit, updateExecution, closeTradeUnitWithQuantity, getOpenExecutionsForClosing, previewBulkImport, confirmBulkImportWithTrades } from "@/server/actions/trades";
 import { addMemoryCashFlow, getMemoryCashFlows, removeMemoryCashFlow, updateMemoryCashFlow, getMemoryAccounts, addMemoryAccount, removeMemoryAccount, updateMemoryAccount, getMemoryBrokers, addMemoryBroker, updateMemoryBroker, removeMemoryBroker, updateAccountMatchingStrategy } from "@/server/actions/transactions";
 import TradeForm from "@/components/trades/TradeForm";
 import ImportCSVView from "@/components/trades/ImportCSVView";
@@ -1414,13 +1414,14 @@ export default function Home() {
           <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 px-2">
             <ImportCSVView
               onClose={() => navigateBack()}
-              onImport={async (rows) => {
-                await bulkImportExecutions(rows);
-                navigateBack();
-                await fetchData();
-              }}
               brokers={brokers.map((b: any) => b.nombre)}
               accounts={accounts.map((c: any) => c.nombre)}
+              onPreview={previewBulkImport}
+              onConfirm={async (rows, decisions) => {
+                const result = await confirmBulkImportWithTrades(rows, decisions);
+                await fetchData();
+                return result;
+              }}
             />
           </div>
         )}
